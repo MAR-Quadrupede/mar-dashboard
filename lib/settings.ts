@@ -9,8 +9,8 @@ export type SystemSettings = {
 };
 
 const defaultSettings: SystemSettings = {
-  leftStreamUrl: "http://100.72.15.72:30080/stream_left.mjpg",
-  rightStreamUrl: "http://100.72.15.72:30080/stream_right.mjpg",
+  leftStreamUrl: "/api/video/left",
+  rightStreamUrl: "/api/video/right",
   gatewayWsUrl: "ws://localhost:8765",
   lockTimeoutSeconds: 35,
   criticalDistanceMeters: 0.35

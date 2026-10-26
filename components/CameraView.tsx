@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { Camera, RefreshCw, Maximize2, AlertCircle } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { Camera, RefreshCw, Maximize2, AlertCircle, Play, Image as ImageIcon } from "lucide-react";
 
 type Stream = {
   id: string;
@@ -15,27 +15,12 @@ type Props = {
   streams?: Stream[];
 };
 
-function resolveStreamUrl(rawUrl?: string, defaultPath: string = "/stream_left.mjpg"): string {
-  if (typeof window === "undefined") {
-    return rawUrl || `http://localhost:30080${defaultPath}`;
+function resolveStreamUrl(rawUrl?: string, defaultPath: string = "/api/video/left"): string {
+  if (!rawUrl) return defaultPath;
+  if (rawUrl.includes("100.77.16.116") || rawUrl.includes(":8443") || rawUrl.includes(":30080")) {
+    return defaultPath;
   }
-  const hostname = window.location.hostname || "100.72.15.72";
-  const protocol = window.location.protocol || "http:";
-
-  if (!rawUrl || rawUrl.includes("100.77.16.116") || rawUrl.includes("8443")) {
-    return `${protocol}//${hostname}:30080${defaultPath}`;
-  }
-
-  try {
-    const parsed = new URL(rawUrl);
-    if (parsed.port === "8443" || parsed.hostname === "100.77.16.116" || parsed.hostname === "localhost") {
-      parsed.hostname = hostname;
-      parsed.port = "30080";
-    }
-    return parsed.toString();
-  } catch {
-    return `${protocol}//${hostname}:30080${defaultPath}`;
-  }
+  return rawUrl.startsWith("/") ? rawUrl : defaultPath;
 }
 
 export function CameraView({ streams = [] }: Props) {
@@ -48,13 +33,15 @@ export function CameraView({ streams = [] }: Props) {
   const leftStream = {
     id: "left",
     name: "Camera Sinistra // YOLO On-Edge",
-    url: resolveStreamUrl(rawLeft, "/stream_left.mjpg")
+    url: resolveStreamUrl(rawLeft, "/api/video/left"),
+    snapshotUrl: "/api/video/left?snapshot=1"
   };
 
   const rightStream = {
     id: "right",
     name: "Camera Destra // Stereoscopia",
-    url: resolveStreamUrl(rawRight, "/stream_right.mjpg")
+    url: resolveStreamUrl(rawRight, "/api/video/right"),
+    snapshotUrl: "/api/video/right?snapshot=1"
   };
 
   const reload = () => setRefreshKey((k) => k + 1);
@@ -112,6 +99,7 @@ export function CameraView({ streams = [] }: Props) {
           <CameraFeedTile
             key={`left-${refreshKey}`}
             url={`${leftStream.url}?k=${refreshKey}`}
+            fallbackSnapshotUrl={leftStream.snapshotUrl}
             label="Camera Sinistra // YOLO On-Edge"
             badge="AI Inference"
           />
@@ -121,6 +109,7 @@ export function CameraView({ streams = [] }: Props) {
           <CameraFeedTile
             key={`right-${refreshKey}`}
             url={`${rightStream.url}?k=${refreshKey}`}
+            fallbackSnapshotUrl={rightStream.snapshotUrl}
             label="Camera Destra // Stereoscopia"
             badge="Depth Map"
           />
@@ -128,19 +117,80 @@ export function CameraView({ streams = [] }: Props) {
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--text-muted)", paddingTop: 4 }}>
-        <span>Global Shutter 30 FPS • Protocollo MJPEG</span>
-        <span className="mono">{leftStream.url}</span>
+        <span>Global Shutter 30 FPS • Protocollo MJPEG / Proxy K8s</span>
+        <span className="mono">mar-vision-service:8443</span>
       </div>
     </div>
   );
 }
 
-function CameraFeedTile({ url, label, badge }: { url: string; label: string; badge: string }) {
-  const [error, setError] = useState(false);
-  const [loaded, setLoaded] = useState(false);
+function CameraFeedTile({
+  url,
+  fallbackSnapshotUrl,
+  label,
+  badge
+}: {
+  url: string;
+  fallbackSnapshotUrl: string;
+  label: string;
+  badge: string;
+}) {
+  const [streamError, setStreamError] = useState(false);
+  const [useSnapshot, setUseSnapshot] = useState(false);
+  const [snapshotSrc, setSnapshotSrc] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const errorCountRef = useRef(0);
+
+  // Snapshot polling fallback if browser blocks multipart streaming
+  useEffect(() => {
+    if (!useSnapshot || !fallbackSnapshotUrl) return;
+
+    let mounted = true;
+    const interval = setInterval(() => {
+      if (mounted) {
+        setSnapshotSrc(`${fallbackSnapshotUrl}&_t=${Date.now()}`);
+      }
+    }, 120);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [useSnapshot, fallbackSnapshotUrl]);
+
+  const toggleFullscreen = () => {
+    if (!containerRef.current) return;
+    if (!document.fullscreenElement) {
+      containerRef.current.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  };
+
+  const handleImageError = () => {
+    if (!useSnapshot) {
+      console.warn(`MJPEG stream error on ${url}, switching to snapshot mode.`);
+      setUseSnapshot(true);
+      setSnapshotSrc(`${fallbackSnapshotUrl}&_t=${Date.now()}`);
+      errorCountRef.current = 0;
+    } else {
+      errorCountRef.current += 1;
+      if (errorCountRef.current > 8) {
+        setStreamError(true);
+      }
+    }
+  };
+
+  const handleImageLoad = () => {
+    errorCountRef.current = 0;
+    if (streamError) setStreamError(false);
+  };
+
+  const currentSrc = useSnapshot ? (snapshotSrc || `${fallbackSnapshotUrl}&_t=${Date.now()}`) : url;
 
   return (
     <div
+      ref={containerRef}
       style={{
         position: "relative",
         background: "var(--bg-app)",
@@ -153,38 +203,48 @@ function CameraFeedTile({ url, label, badge }: { url: string; label: string; bad
         justifyContent: "center"
       }}
     >
-      {!error && (
-        /* eslint-disable-next-line @next/next/no-img-element */
-        <img
-          src={url}
-          alt={label}
-          style={{ width: "100%", height: "100%", objectFit: "cover", display: loaded ? "block" : "none" }}
-          onLoad={() => {
-            setLoaded(true);
-            setError(false);
-          }}
-          onError={() => {
-            setError(true);
-            setLoaded(false);
-          }}
-        />
-      )}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={currentSrc}
+        alt={label}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          display: streamError ? "none" : "block"
+        }}
+        onError={handleImageError}
+        onLoad={handleImageLoad}
+      />
 
-      {!loaded && !error && (
-        <div style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-          <span>Connessione al flusso video in corso...</span>
-          <span className="mono" style={{ fontSize: 10, opacity: 0.6 }}>{url}</span>
-        </div>
-      )}
-
-      {error && (
+      {streamError && (
         <div style={{ padding: 16, textAlign: "center", fontSize: 12, color: "var(--text-muted)", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
           <AlertCircle size={20} color="var(--color-warning)" />
           <span style={{ fontWeight: 600, color: "var(--text-secondary)" }}>Flusso non disponibile</span>
-          <span style={{ fontSize: 11, maxWidth: 260 }}>Verifica che il modulo stereocamera sia attivo sulla porta 8443</span>
-          <button className="btn btn-sm" onClick={() => setError(false)} style={{ marginTop: 4 }}>
-            Riprova
-          </button>
+          <span style={{ fontSize: 11, maxWidth: 260 }}>Verifica connessione al servizio stereocamera</span>
+          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+            <button
+              className="btn btn-sm"
+              onClick={() => {
+                errorCountRef.current = 0;
+                setStreamError(false);
+                setUseSnapshot(false);
+              }}
+            >
+              Riprova Stream
+            </button>
+            <button
+              className="btn btn-sm"
+              onClick={() => {
+                errorCountRef.current = 0;
+                setStreamError(false);
+                setUseSnapshot(true);
+                setSnapshotSrc(`${fallbackSnapshotUrl}&_t=${Date.now()}`);
+              }}
+            >
+              Modalità Snapshot
+            </button>
+          </div>
         </div>
       )}
 
@@ -198,7 +258,7 @@ function CameraFeedTile({ url, label, badge }: { url: string; label: string; bad
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          pointerEvents: "none"
+          pointerEvents: "auto"
         }}
       >
         <span
@@ -214,18 +274,66 @@ function CameraFeedTile({ url, label, badge }: { url: string; label: string; bad
         >
           {label}
         </span>
-        <span
-          style={{
-            background: "rgba(11, 15, 25, 0.75)",
-            backdropFilter: "blur(2px)",
-            padding: "2px 6px",
-            borderRadius: 3,
-            fontSize: 10,
-            color: "var(--color-info)"
-          }}
-        >
-          {badge}
-        </span>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          {/* Mode Switch Button */}
+          <button
+            onClick={() => {
+              const next = !useSnapshot;
+              setUseSnapshot(next);
+              if (next) {
+                setSnapshotSrc(`${fallbackSnapshotUrl}&_t=${Date.now()}`);
+              }
+            }}
+            style={{
+              background: useSnapshot ? "rgba(234, 179, 8, 0.85)" : "rgba(11, 15, 25, 0.75)",
+              color: useSnapshot ? "#000" : "var(--color-info)",
+              border: "none",
+              cursor: "pointer",
+              padding: "2px 6px",
+              borderRadius: 3,
+              fontSize: 9,
+              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              gap: 3
+            }}
+            title={useSnapshot ? "Passa a Stream Continuo" : "Passa a Snapshot Polling"}
+          >
+            {useSnapshot ? <ImageIcon size={10} /> : <Play size={10} />}
+            {useSnapshot ? "SNAPSHOT" : "STREAM"}
+          </button>
+
+          <span
+            style={{
+              background: "rgba(11, 15, 25, 0.75)",
+              backdropFilter: "blur(2px)",
+              padding: "2px 6px",
+              borderRadius: 3,
+              fontSize: 10,
+              color: "var(--color-info)"
+            }}
+          >
+            {badge}
+          </span>
+
+          <button
+            onClick={toggleFullscreen}
+            style={{
+              background: "rgba(11, 15, 25, 0.75)",
+              border: "none",
+              color: "var(--text-main)",
+              cursor: "pointer",
+              padding: "3px 5px",
+              borderRadius: 3,
+              display: "flex",
+              alignItems: "center"
+            }}
+            title="Schermo intero"
+          >
+            <Maximize2 size={11} />
+          </button>
+        </div>
       </div>
     </div>
   );
