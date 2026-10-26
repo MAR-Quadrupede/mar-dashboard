@@ -2,6 +2,8 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+RUN apk add --no-cache openssl libc6-compat
+
 # Install dependencies based on package-lock.json
 COPY package.json package-lock.json* ./
 RUN npm ci

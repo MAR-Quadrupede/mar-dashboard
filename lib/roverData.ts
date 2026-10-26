@@ -66,14 +66,14 @@ const defaultStreams: RoverVideoStream[] = [
   {
     id: "left",
     name: "Camera Sinistra (YOLO Inference)",
-    url: "http://100.77.16.116:8443/stream_left.mjpg",
+    url: "http://100.72.15.72:30080/stream_left.mjpg",
     role: "left_yolo",
     active: true
   },
   {
     id: "right",
     name: "Camera Destra (Disparità 3D)",
-    url: "http://100.77.16.116:8443/stream_right.mjpg",
+    url: "http://100.72.15.72:30080/stream_right.mjpg",
     role: "right_depth",
     active: true
   }

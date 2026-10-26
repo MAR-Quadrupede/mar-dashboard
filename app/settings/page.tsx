@@ -434,7 +434,7 @@ export default function SettingsPage() {
                   type="text"
                   value={settings.leftStreamUrl}
                   onChange={(e) => setSettings({ ...settings, leftStreamUrl: e.target.value })}
-                  placeholder="http://100.77.16.116:8443/stream_left.mjpg"
+                  placeholder="http://100.72.15.72:30080/stream_left.mjpg"
                 />
               </div>
 
@@ -447,7 +447,7 @@ export default function SettingsPage() {
                   type="text"
                   value={settings.rightStreamUrl}
                   onChange={(e) => setSettings({ ...settings, rightStreamUrl: e.target.value })}
-                  placeholder="http://100.77.16.116:8443/stream_right.mjpg"
+                  placeholder="http://100.72.15.72:30080/stream_right.mjpg"
                 />
               </div>
 

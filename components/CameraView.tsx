@@ -15,20 +15,46 @@ type Props = {
   streams?: Stream[];
 };
 
+function resolveStreamUrl(rawUrl?: string, defaultPath: string = "/stream_left.mjpg"): string {
+  if (typeof window === "undefined") {
+    return rawUrl || `http://localhost:30080${defaultPath}`;
+  }
+  const hostname = window.location.hostname || "100.72.15.72";
+  const protocol = window.location.protocol || "http:";
+
+  if (!rawUrl || rawUrl.includes("100.77.16.116") || rawUrl.includes("8443")) {
+    return `${protocol}//${hostname}:30080${defaultPath}`;
+  }
+
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.port === "8443" || parsed.hostname === "100.77.16.116" || parsed.hostname === "localhost") {
+      parsed.hostname = hostname;
+      parsed.port = "30080";
+    }
+    return parsed.toString();
+  } catch {
+    return `${protocol}//${hostname}:30080${defaultPath}`;
+  }
+}
+
 export function CameraView({ streams = [] }: Props) {
   const [viewMode, setViewMode] = useState<"dual" | "left" | "right">("dual");
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const leftStream = streams.find((s) => s.role === "left_yolo" || s.id === "left") || {
+  const rawLeft = streams.find((s) => s.role === "left_yolo" || s.id === "left")?.url;
+  const rawRight = streams.find((s) => s.role === "right_depth" || s.id === "right")?.url;
+
+  const leftStream = {
     id: "left",
-    name: "Camera Sinistra (YOLO)",
-    url: "http://100.77.16.116:8443/stream_left.mjpg"
+    name: "Camera Sinistra // YOLO On-Edge",
+    url: resolveStreamUrl(rawLeft, "/stream_left.mjpg")
   };
 
-  const rightStream = streams.find((s) => s.role === "right_depth" || s.id === "right") || {
+  const rightStream = {
     id: "right",
-    name: "Camera Destra (Depth)",
-    url: "http://100.77.16.116:8443/stream_right.mjpg"
+    name: "Camera Destra // Stereoscopia",
+    url: resolveStreamUrl(rawRight, "/stream_right.mjpg")
   };
 
   const reload = () => setRefreshKey((k) => k + 1);
