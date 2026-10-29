@@ -4,18 +4,20 @@ WORKDIR /app
 
 RUN apk add --no-cache openssl libc6-compat
 
-# Install dependencies based on package-lock.json
 COPY package.json package-lock.json* ./
 RUN npm ci
 
 COPY . .
 
-# Generate Prisma client if schema exists
-RUN npx prisma generate
+RUN npx prisma generate \
+  && npm run build \
+  && npm prune --omit=dev
+
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+ENV NEXT_TELEMETRY_DISABLED=1
 
 EXPOSE 3000
 
-ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
-
-CMD ["npm", "run", "dev"]
+CMD ["npm", "run", "start"]
