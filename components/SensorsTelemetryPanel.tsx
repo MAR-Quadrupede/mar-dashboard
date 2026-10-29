@@ -165,13 +165,19 @@ export function SensorsTelemetryPanel({ telemetry }: Props) {
         </div>
       </div>
 
-      {/* Row 4: GNSS Position */}
+      {/* Row 4: GNSS / sync stamp */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--bg-input)", padding: "8px 10px", borderRadius: "var(--radius-sm)", fontSize: 12, borderTop: "1px solid var(--border-subtle)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <MapPin size={13} color="var(--text-muted)" />
-          <span className="mono">{latitude.toFixed(5)}° N, {longitude.toFixed(5)}° E</span>
+          <span className="mono">
+            {latitude || longitude
+              ? `${latitude.toFixed(5)}° N, ${longitude.toFixed(5)}° E`
+              : `Aggiornato ${new Date(telemetry.updatedAt).toLocaleTimeString()}`}
+          </span>
         </div>
-        <span className="badge badge-success">RTK Valid</span>
+        <span className={`badge ${connectivity === "online" ? "badge-success" : connectivity === "degraded" ? "badge-warning" : "badge-danger"}`}>
+          {connectivity === "online" ? "MQTT Live" : connectivity === "degraded" ? "Link Debole" : "Offline"}
+        </span>
       </div>
     </div>
   );

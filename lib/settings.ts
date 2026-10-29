@@ -11,7 +11,7 @@ export type SystemSettings = {
 const defaultSettings: SystemSettings = {
   leftStreamUrl: "/api/video/left",
   rightStreamUrl: "/api/video/right",
-  gatewayWsUrl: "ws://localhost:8765",
+  gatewayWsUrl: "ws://auto:30765",
   lockTimeoutSeconds: 35,
   criticalDistanceMeters: 0.35
 };

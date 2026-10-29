@@ -18,6 +18,8 @@ type Props = {
   onAcquireLock?: () => Promise<void>;
   onReleaseLock?: () => Promise<void>;
   onLogout: () => void;
+  liveLinkLabel?: string;
+  liveLinkOk?: boolean;
 };
 
 export function Navbar({
@@ -26,7 +28,9 @@ export function Navbar({
   lock,
   onAcquireLock,
   onReleaseLock,
-  onLogout
+  onLogout,
+  liveLinkLabel,
+  liveLinkOk
 }: Props) {
   const pathname = usePathname();
 
@@ -40,13 +44,22 @@ export function Navbar({
               width: 10,
               height: 10,
               borderRadius: "50%",
-              background: "var(--color-success)"
+              background: liveLinkOk === false ? "var(--color-warning)" : "var(--color-success)",
+              boxShadow: liveLinkOk ? "0 0 8px var(--color-success)" : undefined
             }}
           />
           <span>M.A.R.</span>
           <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}>
             Console di Controllo
           </span>
+          {liveLinkLabel && (
+            <span
+              className={`badge ${liveLinkOk ? "badge-success" : "badge-warning"}`}
+              style={{ fontSize: 10, marginLeft: 4 }}
+            >
+              {liveLinkLabel}
+            </span>
+          )}
         </div>
 
         {/* Navigation Tabs */}

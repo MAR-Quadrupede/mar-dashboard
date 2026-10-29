@@ -20,13 +20,15 @@ type Props = {
   holderUsername?: string | null;
   onSendCommand: (command: string, speed?: number) => Promise<void>;
   onAcquireLock?: () => Promise<void>;
+  onEstop?: () => void;
 };
 
 export function MovementPanel({
   canControl,
   holderUsername,
   onSendCommand,
-  onAcquireLock
+  onAcquireLock,
+  onEstop
 }: Props) {
   const [speed, setSpeed] = useState<number>(50);
   const [activeKey, setActiveKey] = useState<string | null>(null);
@@ -257,9 +259,11 @@ export function MovementPanel({
 
           <button
             className="btn btn-sm btn-danger"
-            disabled={!canControl}
-            onClick={() => send("CMD:EMERGENCY_STOP")}
-            title="Emergency Stop"
+            onClick={() => {
+              if (onEstop) onEstop();
+              else void send("CMD:EMERGENCY_STOP");
+            }}
+            title="Emergency Stop (sempre attivo)"
             style={{ height: "100%", padding: 4, display: "flex", flexDirection: "column", gap: 2 }}
           >
             <ShieldAlert size={14} />

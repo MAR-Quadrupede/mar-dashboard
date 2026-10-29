@@ -17,10 +17,22 @@ type Props = {
 
 function resolveStreamUrl(rawUrl?: string, defaultPath: string = "/api/video/left"): string {
   if (!rawUrl) return defaultPath;
-  if (rawUrl.includes("100.77.16.116") || rawUrl.includes(":8443") || rawUrl.includes(":30080")) {
+  if (
+    rawUrl.includes("100.77.") ||
+    rawUrl.includes("100.72.") ||
+    rawUrl.includes(":8443") ||
+    rawUrl.includes(":30080") ||
+    rawUrl.includes("localhost")
+  ) {
     return defaultPath;
   }
   return rawUrl.startsWith("/") ? rawUrl : defaultPath;
+}
+
+function withQuery(url: string, params: Record<string, string | number>): string {
+  const u = new URL(url, "http://local");
+  Object.entries(params).forEach(([k, v]) => u.searchParams.set(k, String(v)));
+  return `${u.pathname}${u.search}`;
 }
 
 export function CameraView({ streams = [] }: Props) {
@@ -98,20 +110,22 @@ export function CameraView({ streams = [] }: Props) {
         {(viewMode === "dual" || viewMode === "left") && (
           <CameraFeedTile
             key={`left-${refreshKey}`}
-            url={`${leftStream.url}?k=${refreshKey}`}
+            url={withQuery(leftStream.url, { k: refreshKey })}
             fallbackSnapshotUrl={leftStream.snapshotUrl}
             label="Camera Sinistra // YOLO On-Edge"
             badge="AI Inference"
+            preferSnapshot
           />
         )}
 
         {(viewMode === "dual" || viewMode === "right") && (
           <CameraFeedTile
             key={`right-${refreshKey}`}
-            url={`${rightStream.url}?k=${refreshKey}`}
+            url={withQuery(rightStream.url, { k: refreshKey })}
             fallbackSnapshotUrl={rightStream.snapshotUrl}
             label="Camera Destra // Stereoscopia"
             badge="Depth Map"
+            preferSnapshot
           />
         )}
       </div>
@@ -128,29 +142,33 @@ function CameraFeedTile({
   url,
   fallbackSnapshotUrl,
   label,
-  badge
+  badge,
+  preferSnapshot = true
 }: {
   url: string;
   fallbackSnapshotUrl: string;
   label: string;
   badge: string;
+  preferSnapshot?: boolean;
 }) {
   const [streamError, setStreamError] = useState(false);
-  const [useSnapshot, setUseSnapshot] = useState(false);
+  // Safari / Tailscale: MJPEG multipart often stalls; snapshot polling is reliable
+  const [useSnapshot, setUseSnapshot] = useState(preferSnapshot);
   const [snapshotSrc, setSnapshotSrc] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
   const errorCountRef = useRef(0);
 
-  // Snapshot polling fallback if browser blocks multipart streaming
   useEffect(() => {
     if (!useSnapshot || !fallbackSnapshotUrl) return;
 
     let mounted = true;
-    const interval = setInterval(() => {
+    const tick = () => {
       if (mounted) {
-        setSnapshotSrc(`${fallbackSnapshotUrl}&_t=${Date.now()}`);
+        setSnapshotSrc(withQuery(fallbackSnapshotUrl, { _t: Date.now() }));
       }
-    }, 120);
+    };
+    tick();
+    const interval = setInterval(tick, 250);
 
     return () => {
       mounted = false;
@@ -171,11 +189,11 @@ function CameraFeedTile({
     if (!useSnapshot) {
       console.warn(`MJPEG stream error on ${url}, switching to snapshot mode.`);
       setUseSnapshot(true);
-      setSnapshotSrc(`${fallbackSnapshotUrl}&_t=${Date.now()}`);
+      setSnapshotSrc(withQuery(fallbackSnapshotUrl, { _t: Date.now() }));
       errorCountRef.current = 0;
     } else {
       errorCountRef.current += 1;
-      if (errorCountRef.current > 8) {
+      if (errorCountRef.current > 12) {
         setStreamError(true);
       }
     }
@@ -186,7 +204,9 @@ function CameraFeedTile({
     if (streamError) setStreamError(false);
   };
 
-  const currentSrc = useSnapshot ? (snapshotSrc || `${fallbackSnapshotUrl}&_t=${Date.now()}`) : url;
+  const currentSrc = useSnapshot
+    ? snapshotSrc || withQuery(fallbackSnapshotUrl, { _t: Date.now() })
+    : url;
 
   return (
     <div
@@ -239,7 +259,7 @@ function CameraFeedTile({
                 errorCountRef.current = 0;
                 setStreamError(false);
                 setUseSnapshot(true);
-                setSnapshotSrc(`${fallbackSnapshotUrl}&_t=${Date.now()}`);
+                setSnapshotSrc(withQuery(fallbackSnapshotUrl, { _t: Date.now() }));
               }}
             >
               Modalità Snapshot
@@ -282,7 +302,7 @@ function CameraFeedTile({
               const next = !useSnapshot;
               setUseSnapshot(next);
               if (next) {
-                setSnapshotSrc(`${fallbackSnapshotUrl}&_t=${Date.now()}`);
+                setSnapshotSrc(withQuery(fallbackSnapshotUrl, { _t: Date.now() }));
               }
             }}
             style={{

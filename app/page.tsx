@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useGatewayLive } from "@/hooks/useGatewayLive";
 import { api } from "@/lib/api";
 import { Navbar } from "@/components/Navbar";
 import { CameraView } from "@/components/CameraView";
@@ -13,47 +14,44 @@ import { AuthScreen } from "@/components/AuthScreen";
 export default function DashboardPage() {
   const { token, user, loading: authLoading, error: authError, login, logout } = useAuth();
 
-  const [telemetry, setTelemetry] = useState<any>(null);
-  const [thought, setThought] = useState<any>(null);
   const [streams, setStreams] = useState<any[]>([]);
   const [lock, setLock] = useState<any>(null);
-  const [loadingData, setLoadingData] = useState(false);
+  const [gatewayWsUrl, setGatewayWsUrl] = useState<string | null>(null);
 
-  // Fetch telemetry and lock
-  const fetchData = useCallback(async () => {
+  const live = useGatewayLive(Boolean(token), gatewayWsUrl);
+
+  const refreshLock = useCallback(async () => {
     if (!token) return;
     try {
-      const [statusRes, thoughtRes, videoRes] = await Promise.all([
-        api.getRoverStatus(token).catch(() => null),
-        api.getRoverThought(token).catch(() => null),
-        api.getRoverVideo(token).catch(() => [])
-      ]);
-
-      if (statusRes) {
-        setTelemetry(statusRes.telemetry);
-        setLock(statusRes.lock);
-      }
-      if (thoughtRes) {
-        setThought(thoughtRes);
-      }
-      if (videoRes) {
-        setStreams(videoRes);
-      }
-    } catch (err) {
-      console.warn("Poll fetch error:", err);
+      const statusRes = await api.getRoverStatus(token);
+      if (statusRes?.lock) setLock(statusRes.lock);
+      // Prefer live WS telemetry; API mock is ignored when link is live
+    } catch {
+      // ignore
     }
   }, [token]);
 
-  // Initial load and periodic poll
   useEffect(() => {
     if (!token) return;
-    fetchData();
 
-    const interval = setInterval(fetchData, 2500);
+    (async () => {
+      try {
+        const [videoRes, settingsRes] = await Promise.all([
+          api.getRoverVideo(token).catch(() => []),
+          api.getSettings(token).catch(() => null)
+        ]);
+        if (Array.isArray(videoRes)) setStreams(videoRes);
+        if (settingsRes?.gatewayWsUrl) setGatewayWsUrl(settingsRes.gatewayWsUrl);
+      } catch {
+        // ignore
+      }
+      await refreshLock();
+    })();
+
+    const interval = setInterval(refreshLock, 5000);
     return () => clearInterval(interval);
-  }, [token, fetchData]);
+  }, [token, refreshLock]);
 
-  // Heartbeat when caller holds the lock
   useEffect(() => {
     if (!token || !lock?.isHeldByCaller) return;
 
@@ -68,42 +66,45 @@ export default function DashboardPage() {
     return () => clearInterval(heartbeatInterval);
   }, [token, lock?.isHeldByCaller]);
 
-  // Acquire control lock
   const handleAcquireLock = async () => {
     if (!token) return;
     try {
       const res = await api.acquireControlLock(token, Boolean(user?.isAdmin));
-      if (res.state) {
-        setLock(res.state);
-      }
-      await fetchData();
+      if (res.state) setLock(res.state);
+      await refreshLock();
     } catch (err: any) {
       alert(err.message || "Impossibile acquisire il controllo");
     }
   };
 
-  // Release control lock
   const handleReleaseLock = async () => {
     if (!token) return;
     try {
       await api.releaseControlLock(token);
-      await fetchData();
+      await refreshLock();
     } catch (err: any) {
       alert(err.message || "Errore nel rilascio del controllo");
     }
   };
 
-  // Dispatch movement command
   const handleSendCommand = async (command: string, speed?: number) => {
     if (!token) return;
+
+    // E-CUT / STOP always go to MQTT immediately via gateway WS
+    const upper = command.toUpperCase();
+    if (upper.includes("ESTOP") || upper === "E-CUT" || upper === "CMD:ESTOP") {
+      live.sendEstop();
+      return;
+    }
+
+    const pushed = live.sendMotion(command, speed);
     try {
       await api.sendCommand(token, command, speed);
-      fetchData();
     } catch (err: any) {
       if (err.status === 403) {
         alert(err.message || "Non hai i permessi per inviare comandi: controllo occupato da un altro utente.");
-        fetchData();
-      } else {
+        refreshLock();
+      } else if (!pushed) {
         console.error("Command error:", err);
       }
     }
@@ -121,9 +122,15 @@ export default function DashboardPage() {
     return <AuthScreen onLogin={login} loading={authLoading} error={authError} />;
   }
 
+  const linkLabel =
+    live.link === "live"
+      ? "LIVE MQTT"
+      : live.link === "connecting" || live.link === "reconnecting"
+        ? "SYNC…"
+        : "OFFLINE";
+
   return (
     <div className="container">
-      {/* Top Header & Lock Pill */}
       <Navbar
         username={user?.username}
         isAdmin={user?.isAdmin}
@@ -131,31 +138,25 @@ export default function DashboardPage() {
         onAcquireLock={handleAcquireLock}
         onReleaseLock={handleReleaseLock}
         onLogout={logout}
+        liveLinkLabel={linkLabel}
+        liveLinkOk={live.link === "live"}
       />
 
-      {/* Main Ergonomic Grid */}
       <main className="grid-main">
-        {/* Left Column: Vision & Model Line of Thought */}
         <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {/* 1. Stereo Video Cameras */}
           <CameraView streams={streams} />
-
-          {/* 2. Classification Model Line of Thought */}
-          <LineOfThoughtPanel data={thought} />
+          <LineOfThoughtPanel data={live.thought} />
         </section>
 
-        {/* Right Column: Motion Controls & Subsystem Sensors */}
         <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {/* 3. Directional Movement & Gait Controls */}
           <MovementPanel
             canControl={Boolean(lock?.isHeldByCaller)}
             holderUsername={lock?.holderUsername}
             onSendCommand={handleSendCommand}
             onAcquireLock={handleAcquireLock}
+            onEstop={() => live.sendEstop()}
           />
-
-          {/* 4. Sensor Readings & Hardware Telemetry */}
-          <SensorsTelemetryPanel telemetry={telemetry} />
+          <SensorsTelemetryPanel telemetry={live.telemetry} />
         </section>
       </main>
     </div>
