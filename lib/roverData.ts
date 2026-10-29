@@ -48,7 +48,7 @@ export type RoverLineOfThought = {
   currentDecision: {
     command: string;
     justification: string;
-    riskLevel: "LOW" | "MODERATE" | "CRITICAL";
+    riskLevel: "LOW" | "MODERATE" | "HIGH" | "CRITICAL";
   };
   recentThoughts: ThoughtEvent[];
 };

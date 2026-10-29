@@ -37,14 +37,18 @@ function formatTime(ts?: number): string {
   return d.toTimeString().split(" ")[0];
 }
 
-function riskFromCommand(cmd: string, frontM?: number): "LOW" | "MODERATE" | "CRITICAL" {
+/** Unified bands (m): CRITICAL <0.40 | HIGH <0.70 | MODERATE <1.20 | LOW */
+function riskFromCommand(cmd: string, frontM?: number): "LOW" | "MODERATE" | "HIGH" | "CRITICAL" {
+  if (frontM !== undefined && frontM > 0) {
+    if (frontM < 0.4) return "CRITICAL";
+    if (frontM < 0.7) return "HIGH";
+    if (frontM < 1.2) return "MODERATE";
+  }
   const c = (cmd || "").toUpperCase();
-  if (c.includes("STOP") || c.includes("EMERGENCY") || (frontM !== undefined && frontM < 0.35)) {
-    return "CRITICAL";
-  }
-  if (c.includes("TURN") || c.includes("SLOW") || (frontM !== undefined && frontM < 1.5)) {
-    return "MODERATE";
-  }
+  if (c.includes("CRITICAL") || (c.includes("STOP") && c.includes("EMERGENCY"))) return "CRITICAL";
+  if (c.includes("STOP") || c.includes("FRENA") || c.includes("HIGH")) return "HIGH";
+  if (c.includes("TURN") || c.includes("MODERATE") || c.includes("SLOW")) return "MODERATE";
+  if (c.includes("STOP")) return "HIGH";
   return "LOW";
 }
 
@@ -247,13 +251,28 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
         const cmd = String(payload?.command || "");
         const reason = String(payload?.reason || "");
         const distCm = Number(payload?.obstacle_near_cm ?? payload?.target_dist_cm ?? 0);
+        const riskRaw = String(payload?.risk_level || "").toUpperCase();
+        const risk =
+          riskRaw === "CRITICAL" || riskRaw === "HIGH" || riskRaw === "MODERATE" || riskRaw === "LOW"
+            ? (riskRaw as "LOW" | "MODERATE" | "HIGH" | "CRITICAL")
+            : riskFromCommand(cmd, distCm > 0 ? distCm / 100 : undefined);
+        setTelemetry((prev) => {
+          const next = {
+            ...prev,
+            frontDistanceMeters: distCm > 0 && distCm < 900 ? distCm / 100 : prev.frontDistanceMeters,
+            connectivity: "online" as const,
+            updatedAt: nowIso
+          };
+          telemRef.current = next;
+          return next;
+        });
         setThought((prev) => ({
           ...prev,
           currentStage: "ACTION_DECISION",
           currentDecision: {
             command: cmd.startsWith("CMD:") ? cmd : `VISION:${cmd}`,
             justification: reason || prev.currentDecision.justification,
-            riskLevel: riskFromCommand(cmd, distCm > 0 ? distCm / 100 : undefined)
+            riskLevel: risk
           }
         }));
         return;

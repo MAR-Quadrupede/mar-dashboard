@@ -14,7 +14,7 @@ type ThoughtData = {
   currentDecision: {
     command: string;
     justification: string;
-    riskLevel: "LOW" | "MODERATE" | "CRITICAL";
+    riskLevel: "LOW" | "MODERATE" | "HIGH" | "CRITICAL";
   };
   recentThoughts: Array<{
     id: string;
@@ -171,7 +171,7 @@ export function LineOfThoughtPanel({ data }: Props) {
             </span>
             <span
               className={`badge ${
-                currentDecision.riskLevel === "CRITICAL"
+                currentDecision.riskLevel === "CRITICAL" || currentDecision.riskLevel === "HIGH"
                   ? "badge-danger"
                   : currentDecision.riskLevel === "MODERATE"
                   ? "badge-warning"
