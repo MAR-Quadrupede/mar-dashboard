@@ -5,7 +5,8 @@ export type RoverTelemetry = {
   batteryVoltage: number; // e.g. 15.4V
   currentAmps: number; // e.g. 2.1A
   temperatureCelsius: number; // e.g. 42.1°C
-  frontDistanceMeters: number; // e.g. 1.85m
+  frontDistanceMeters: number; // e.g. 1.85m (LiDAR fronte)
+  ultrasonicMeters: number; // Makeblock US frontale (asse camera)
   lidarPoints: number; // e.g. 1840
   rollDegrees: number; // e.g. 1.2°
   pitchDegrees: number; // e.g. -0.8°
@@ -91,6 +92,7 @@ export async function getRoverTelemetry(): Promise<RoverTelemetry> {
         currentAmps: 2.3,
         temperatureCelsius: latestSensor.temperature,
         frontDistanceMeters: latestSensor.distanceMeters,
+        ultrasonicMeters: 0,
         lidarPoints: latestSensor.lidarPoints,
         rollDegrees: 0.8,
         pitchDegrees: -0.6,
@@ -112,6 +114,7 @@ export async function getRoverTelemetry(): Promise<RoverTelemetry> {
     currentAmps: 2.1,
     temperatureCelsius: 41.5,
     frontDistanceMeters: 1.85,
+    ultrasonicMeters: 0,
     lidarPoints: 1840,
     rollDegrees: 0.8,
     pitchDegrees: -0.6,

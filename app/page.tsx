@@ -9,6 +9,7 @@ import { CameraView } from "@/components/CameraView";
 import { LineOfThoughtPanel } from "@/components/LineOfThoughtPanel";
 import { MovementPanel } from "@/components/MovementPanel";
 import { SensorsTelemetryPanel } from "@/components/SensorsTelemetryPanel";
+import { LidarRadar } from "@/components/LidarRadar";
 import { AuthScreen } from "@/components/AuthScreen";
 
 export default function DashboardPage() {
@@ -144,7 +145,7 @@ export default function DashboardPage() {
 
       <main className="grid-main">
         <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <CameraView streams={streams} />
+          <CameraView streams={streams} visionFps={live.visionFps} />
           <LineOfThoughtPanel data={live.thought} />
         </section>
 
@@ -157,6 +158,10 @@ export default function DashboardPage() {
             onEstop={() => live.sendEstop()}
           />
           <SensorsTelemetryPanel telemetry={live.telemetry} />
+          <LidarRadar
+            points={live.lidarPointsCloud}
+            frontDistanceM={live.telemetry.frontDistanceMeters}
+          />
         </section>
       </main>
     </div>

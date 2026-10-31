@@ -89,6 +89,7 @@ const emptyTelemetry = (): RoverTelemetry => ({
   currentAmps: 0,
   temperatureCelsius: 0,
   frontDistanceMeters: 0,
+  ultrasonicMeters: 0,
   lidarPoints: 0,
   rollDegrees: 0,
   pitchDegrees: 0,
@@ -99,11 +100,15 @@ const emptyTelemetry = (): RoverTelemetry => ({
   updatedAt: new Date().toISOString()
 });
 
+export type VisionFps = { camera?: number; depth?: number; stream?: number };
+
 export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null) {
   const [link, setLink] = useState<LiveLinkState>("offline");
   const [telemetry, setTelemetry] = useState<RoverTelemetry>(emptyTelemetry);
   const [thought, setThought] = useState<RoverLineOfThought>(emptyThought);
   const [lastTopicAt, setLastTopicAt] = useState<number>(0);
+  const [visionFps, setVisionFps] = useState<VisionFps | null>(null);
+  const [lidarPointsCloud, setLidarPointsCloud] = useState<[number, number][]>([]);
 
   const wsRef = useRef<WebSocket | null>(null);
   const thoughtsRef = useRef<ThoughtEvent[]>([]);
@@ -169,10 +174,20 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
           Number(payload?.front_distance_m ?? payload?.sector_mins?.Fronte ?? telemRef.current.frontDistanceMeters) ||
           0;
         const points =
-          Number(payload?.point_count ?? payload?.points?.length ?? telemRef.current.lidarPoints) || 0;
+          Number(payload?.point_count ?? payload?.cloud_count ?? payload?.points?.length ?? telemRef.current.lidarPoints) || 0;
         const theta = Number(payload?.theta ?? 0);
         const sector = String(payload?.sector || payload?.sector_en || "Fronte");
         const dist = Number(payload?.dist_m ?? front);
+
+        if (topic === "mar/lidar/scan" && Array.isArray(payload?.points)) {
+          const cloud = payload.points
+            .map((p: unknown) => {
+              if (Array.isArray(p) && p.length >= 2) return [Number(p[0]), Number(p[1])] as [number, number];
+              return null;
+            })
+            .filter(Boolean) as [number, number][];
+          if (cloud.length) setLidarPointsCloud(cloud);
+        }
 
         setTelemetry((prev) => {
           const next = {
@@ -206,6 +221,17 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
       }
 
       if (topic === "mar/vision/detections" || topic === "mar/vision/status") {
+        if (
+          payload?.fps_camera != null ||
+          payload?.fps_depth != null ||
+          payload?.fps_stream != null
+        ) {
+          setVisionFps({
+            camera: Number(payload?.fps_camera) || undefined,
+            depth: Number(payload?.fps_depth) || undefined,
+            stream: Number(payload?.fps_stream) || undefined
+          });
+        }
         const objects = Array.isArray(payload?.objects) ? payload.objects : [];
         const top = objects[0];
         const z =
@@ -293,9 +319,11 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
         return;
       }
 
-      if (topic === "mar/hardware/telemetry") {
+      if (topic === "mar/ultrasonic/range" || topic === "mar/hardware/telemetry") {
         const battV = Number(payload?.batt ?? payload?.battery_v ?? payload?.voltage ?? NaN);
-        const ultrasonic = Number(payload?.ultrasonic ?? payload?.us_cm ?? NaN);
+        const ultrasonic = Number(
+          payload?.us_cm ?? payload?.ultrasonic_cm ?? payload?.ultrasonic ?? payload?.us ?? NaN
+        );
         setTelemetry((prev) => {
           let batteryPercent = prev.batteryPercent;
           let batteryVoltage = prev.batteryVoltage;
@@ -308,9 +336,8 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
             ...prev,
             batteryPercent,
             batteryVoltage: batteryVoltage || prev.batteryVoltage,
-            frontDistanceMeters: !Number.isNaN(ultrasonic) && ultrasonic > 0
-              ? ultrasonic / 100
-              : prev.frontDistanceMeters,
+            ultrasonicMeters:
+              !Number.isNaN(ultrasonic) && ultrasonic > 0 ? ultrasonic / 100 : prev.ultrasonicMeters,
             connectivity: "online" as const,
             updatedAt: nowIso
           };
@@ -447,6 +474,8 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
     link,
     telemetry,
     thought,
+    visionFps,
+    lidarPointsCloud,
     lastTopicAt,
     sendMotion,
     sendEstop,

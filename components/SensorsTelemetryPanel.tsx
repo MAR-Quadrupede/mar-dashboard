@@ -9,6 +9,7 @@ type TelemetryData = {
   currentAmps: number;
   temperatureCelsius: number;
   frontDistanceMeters: number;
+  ultrasonicMeters?: number;
   lidarPoints: number;
   rollDegrees: number;
   pitchDegrees: number;
@@ -46,6 +47,7 @@ export function SensorsTelemetryPanel({ telemetry }: Props) {
     currentAmps,
     temperatureCelsius,
     frontDistanceMeters,
+    ultrasonicMeters = 0,
     lidarPoints,
     rollDegrees,
     pitchDegrees,
@@ -116,7 +118,18 @@ export function SensorsTelemetryPanel({ telemetry }: Props) {
 
         <div className="metric-row">
           <div className="metric-item">
-            <div className="metric-label">Laser Frontale</div>
+            <div className="metric-label">Ultrasuoni (A2)</div>
+            <div
+              className="metric-val mono"
+              style={{ color: ultrasonicMeters > 0 && ultrasonicMeters < 0.8 ? "var(--color-danger)" : undefined }}
+            >
+              {ultrasonicMeters > 0 ? ultrasonicMeters.toFixed(2) : "—"}{" "}
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>m</span>
+            </div>
+          </div>
+
+          <div className="metric-item">
+            <div className="metric-label">LiDAR Fronte</div>
             <div className="metric-val mono" style={{ color: frontDistanceMeters < 0.8 ? "var(--color-danger)" : undefined }}>
               {frontDistanceMeters.toFixed(2)} <span style={{ fontSize: 11, color: "var(--text-muted)" }}>m</span>
             </div>
@@ -126,7 +139,9 @@ export function SensorsTelemetryPanel({ telemetry }: Props) {
             <div className="metric-label">LiDAR 360°</div>
             <div className="metric-val mono">{lidarPoints} <span style={{ fontSize: 11, color: "var(--text-muted)" }}>punti</span></div>
           </div>
+        </div>
 
+        <div className="metric-row" style={{ marginTop: 4 }}>
           <div className="metric-item">
             <div className="metric-label">Temp. RPi 5</div>
             <div className="metric-val mono" style={{ color: isHot ? "var(--color-danger)" : undefined }}>
