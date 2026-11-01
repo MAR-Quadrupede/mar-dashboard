@@ -143,13 +143,25 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
         const cmd = String(payload?.active_command || "—");
         const state = String(payload?.state || "IDLE");
         const reason = String(payload?.reason || "");
-        const front = telemRef.current.frontDistanceMeters;
-        const risk = riskFromCommand(cmd, front);
+        const fusedCm = payload?.fusion?.fused_cm != null ? Number(payload.fusion.fused_cm) : null;
+        const front = fusedCm != null && fusedCm > 0 && fusedCm < 900 ? fusedCm / 100 : telemRef.current.frontDistanceMeters;
+
+        // Livello di rischio autorevole calcolato dal Decision Engine
+        const riskFromFsm = String(payload?.risk_level || "").toUpperCase();
+        const risk: "LOW" | "MODERATE" | "HIGH" | "CRITICAL" =
+          riskFromFsm === "CRITICAL" || riskFromFsm === "HIGH" || riskFromFsm === "MODERATE" || riskFromFsm === "LOW"
+            ? (riskFromFsm as any)
+            : cmd.includes("STOP")
+            ? "CRITICAL"
+            : cmd.includes("TURN")
+            ? "MODERATE"
+            : "LOW";
 
         setTelemetry((prev) => {
           const next = {
             ...prev,
             fsmState: state as RoverTelemetry["fsmState"],
+            frontDistanceMeters: front > 0 ? front : prev.frontDistanceMeters,
             connectivity: "online" as const,
             updatedAt: nowIso
           };
@@ -286,33 +298,20 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
       }
 
       if (topic === "mar/vision/command") {
-        const cmd = String(payload?.command || "");
-        const reason = String(payload?.reason || "");
         const distCm = Number(payload?.obstacle_near_cm ?? payload?.target_dist_cm ?? 0);
-        const riskRaw = String(payload?.risk_level || "").toUpperCase();
-        const risk =
-          riskRaw === "CRITICAL" || riskRaw === "HIGH" || riskRaw === "MODERATE" || riskRaw === "LOW"
-            ? (riskRaw as "LOW" | "MODERATE" | "HIGH" | "CRITICAL")
-            : riskFromCommand(cmd, distCm > 0 ? distCm / 100 : undefined);
-        setTelemetry((prev) => {
-          const next = {
-            ...prev,
-            frontDistanceMeters: distCm > 0 && distCm < 900 ? distCm / 100 : prev.frontDistanceMeters,
-            connectivity: "online" as const,
-            updatedAt: nowIso
-          };
-          telemRef.current = next;
-          return next;
-        });
-        setThought((prev) => ({
-          ...prev,
-          currentStage: "ACTION_DECISION",
-          currentDecision: {
-            command: cmd.startsWith("CMD:") ? cmd : `VISION:${cmd}`,
-            justification: reason || prev.currentDecision.justification,
-            riskLevel: risk
-          }
-        }));
+        // Non sovrascrivere currentDecision o riskLevel: appartiene esclusivamente al Decision Engine FSM.
+        if (distCm > 0 && distCm < 900) {
+          setTelemetry((prev) => {
+            const next = {
+              ...prev,
+              frontDistanceMeters: prev.frontDistanceMeters > 0 ? prev.frontDistanceMeters : distCm / 100,
+              connectivity: "online" as const,
+              updatedAt: nowIso
+            };
+            telemRef.current = next;
+            return next;
+          });
+        }
         return;
       }
 
