@@ -109,6 +109,8 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
   const [lastTopicAt, setLastTopicAt] = useState<number>(0);
   const [visionFps, setVisionFps] = useState<VisionFps | null>(null);
   const [lidarPointsCloud, setLidarPointsCloud] = useState<[number, number][]>([]);
+  const [slamPose, setSlamPose] = useState<any>(null);
+  const [slamMap, setSlamMap] = useState<any>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const thoughtsRef = useRef<ThoughtEvent[]>([]);
@@ -126,6 +128,16 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
     (topic: string, payload: any) => {
       const nowIso = new Date().toISOString();
       setLastTopicAt(Date.now());
+
+      if (topic === "mar/slam/pose") {
+        setSlamPose(payload);
+        return;
+      }
+
+      if (topic === "mar/slam/map") {
+        setSlamMap(payload);
+        return;
+      }
 
       if (topic === "mar/fsm/state") {
         const cmd = String(payload?.active_command || "—");
@@ -476,6 +488,8 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
     thought,
     visionFps,
     lidarPointsCloud,
+    slamPose,
+    slamMap,
     lastTopicAt,
     sendMotion,
     sendEstop,

@@ -180,6 +180,8 @@ export default function DashboardPage() {
             <LidarRadar
               points={live.lidarPointsCloud}
               frontDistanceM={live.telemetry.frontDistanceMeters}
+              slamPose={live.slamPose}
+              slamMap={live.slamMap}
             />
           </div>
         </div>
