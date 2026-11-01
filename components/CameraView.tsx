@@ -113,7 +113,7 @@ async function playMjpegToCanvas(
   }
 }
 
-export function CameraView({ streams = [], visionFps = null }: Props) {
+export function CameraView({ streams = [], visionFps = null, loraMode = false }: Props) {
   const [viewMode, setViewMode] = useState<"dual" | "left" | "right">("dual");
   const [refreshKey, setRefreshKey] = useState(0);
   const [safari, setSafari] = useState(false);
@@ -143,8 +143,9 @@ export function CameraView({ streams = [], visionFps = null }: Props) {
 
   const camFps = visionFps?.camera;
   const depthFps = visionFps?.depth;
-  const fpsText =
-    camFps != null
+  const fpsText = loraMode
+    ? "Link Radio LoRa 868 MHz · Video Standby"
+    : camFps != null
       ? `Source: ${camFps.toFixed(0)} FPS | Depth: ${(depthFps ?? camFps).toFixed(0)} FPS`
       : "Feed MJPEG attivo";
 
@@ -157,30 +158,43 @@ export function CameraView({ streams = [], visionFps = null }: Props) {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          {/* View mode segmented switcher */}
-          <div className="segmented-control" style={{ padding: 1 }}>
-            <button
-              className={`segmented-btn ${viewMode === "dual" ? "active" : ""}`}
-              style={{ padding: "3px 8px", fontSize: 10 }}
-              onClick={() => setViewMode("dual")}
+          {loraMode ? (
+            <span
+              className="tag mono"
+              style={{
+                background: "rgba(16, 185, 129, 0.15)",
+                color: "#34d399",
+                border: "1px solid rgba(16, 185, 129, 0.4)",
+                fontSize: 10
+              }}
             >
-              DUAL
-            </button>
-            <button
-              className={`segmented-btn ${viewMode === "left" ? "active" : ""}`}
-              style={{ padding: "3px 8px", fontSize: 10 }}
-              onClick={() => setViewMode("left")}
-            >
-              LEFT (YOLO)
-            </button>
-            <button
-              className={`segmented-btn ${viewMode === "right" ? "active" : ""}`}
-              style={{ padding: "3px 8px", fontSize: 10 }}
-              onClick={() => setViewMode("right")}
-            >
-              RIGHT (DEPTH)
-            </button>
-          </div>
+              MODO RADIO
+            </span>
+          ) : (
+            <div className="segmented-control" style={{ padding: 1 }}>
+              <button
+                className={`segmented-btn ${viewMode === "dual" ? "active" : ""}`}
+                style={{ padding: "3px 8px", fontSize: 10 }}
+                onClick={() => setViewMode("dual")}
+              >
+                DUAL
+              </button>
+              <button
+                className={`segmented-btn ${viewMode === "left" ? "active" : ""}`}
+                style={{ padding: "3px 8px", fontSize: 10 }}
+                onClick={() => setViewMode("left")}
+              >
+                LEFT (YOLO)
+              </button>
+              <button
+                className={`segmented-btn ${viewMode === "right" ? "active" : ""}`}
+                style={{ padding: "3px 8px", fontSize: 10 }}
+                onClick={() => setViewMode("right")}
+              >
+                RIGHT (DEPTH)
+              </button>
+            </div>
+          )}
 
           <button className="btn btn-xs" onClick={reload} title="Ricarica flusso ottico">
             <RefreshCw size={11} />
@@ -189,7 +203,7 @@ export function CameraView({ streams = [], visionFps = null }: Props) {
       </div>
 
       <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-        {safari && (
+        {safari && !loraMode && (
           <div
             style={{
               padding: "6px 8px",
@@ -204,33 +218,73 @@ export function CameraView({ streams = [], visionFps = null }: Props) {
           </div>
         )}
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: viewMode === "dual" ? "1fr 1fr" : "1fr",
-            gap: 8
-          }}
-        >
-          {(viewMode === "dual" || viewMode === "left") && (
-            <TacticalFeedTile
-              key={`left-${refreshKey}`}
-              url={withQuery(leftStream.url, { k: refreshKey })}
-              fallbackSnapshotUrl={leftStream.snapshotUrl}
-              label={leftStream.name}
-              badge="YOLO ON-EDGE"
-            />
-          )}
+        {loraMode ? (
+          <div
+            style={{
+              padding: "36px 16px",
+              textAlign: "center",
+              background: "rgba(10, 20, 30, 0.65)",
+              border: "1px dashed rgba(59, 130, 246, 0.35)",
+              borderRadius: "var(--radius-xs)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 10
+            }}
+          >
+            <div
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: "50%",
+                background: "rgba(16, 185, 129, 0.12)",
+                border: "1px solid rgba(16, 185, 129, 0.4)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#34d399"
+              }}
+            >
+              <Radio size={22} />
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-main)", letterSpacing: "0.04em" }}>
+              COLLEGAMENTO RADIO LoRa 868 MHz ATTIVO
+            </div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", maxWidth: 440, lineHeight: 1.5 }}>
+              I flussi video sono disabilitati per vincoli di banda RF (≤ 1 kbps). La telemetria
+              (LiDAR, Ultrasuoni, IMU, Batteria, FSM) e i comandi operano in tempo reale con priorità assoluta su porta seriale locale USB.
+            </div>
+          </div>
+        ) : (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: viewMode === "dual" ? "1fr 1fr" : "1fr",
+              gap: 8
+            }}
+          >
+            {(viewMode === "dual" || viewMode === "left") && (
+              <TacticalFeedTile
+                key={`left-${refreshKey}`}
+                url={withQuery(leftStream.url, { k: refreshKey })}
+                fallbackSnapshotUrl={leftStream.snapshotUrl}
+                label={leftStream.name}
+                badge="YOLO ON-EDGE"
+              />
+            )}
 
-          {(viewMode === "dual" || viewMode === "right") && (
-            <TacticalFeedTile
-              key={`right-${refreshKey}`}
-              url={withQuery(rightStream.url, { k: refreshKey })}
-              fallbackSnapshotUrl={rightStream.snapshotUrl}
-              label={rightStream.name}
-              badge="STEREO DEPTH"
-            />
-          )}
-        </div>
+            {(viewMode === "dual" || viewMode === "right") && (
+              <TacticalFeedTile
+                key={`right-${refreshKey}`}
+                url={withQuery(rightStream.url, { k: refreshKey })}
+                fallbackSnapshotUrl={rightStream.snapshotUrl}
+                label={rightStream.name}
+                badge="STEREO DEPTH"
+              />
+            )}
+          </div>
+        )}
 
         {/* Footer telemetry status line */}
         <div

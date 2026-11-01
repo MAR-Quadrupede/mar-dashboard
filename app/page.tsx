@@ -88,8 +88,6 @@ export default function DashboardPage() {
   };
 
   const handleSendCommand = async (command: string, speed?: number) => {
-    if (!token) return;
-
     const upper = command.toUpperCase();
     if (upper.includes("ESTOP") || upper === "E-CUT" || upper === "CMD:ESTOP") {
       live.sendEstop();
@@ -97,14 +95,16 @@ export default function DashboardPage() {
     }
 
     const pushed = live.sendMotion(command, speed);
-    try {
-      await api.sendCommand(token, command, speed);
-    } catch (err: any) {
-      if (err.status === 403) {
-        alert(err.message || "Permesso negato: il controllo è detenuto da un altro operatore.");
-        refreshLock();
-      } else if (!pushed) {
-        console.error("Command error:", err);
+    if (token) {
+      try {
+        await api.sendCommand(token, command, speed);
+      } catch (err: any) {
+        if (err.status === 403) {
+          alert(err.message || "Permesso negato: il controllo è detenuto da un altro operatore.");
+          refreshLock();
+        } else if (!pushed) {
+          console.error("Command error:", err);
+        }
       }
     }
   };
@@ -132,11 +132,14 @@ export default function DashboardPage() {
   }
 
   const linkLabel =
-    live.link === "live"
-      ? "MQTT LIVE"
-      : live.link === "connecting" || live.link === "reconnecting"
-        ? "SYNC..."
-        : "OFFLINE";
+    live.transportMode === "LORA"
+      ? "LORA (USB) 868MHz"
+      : live.link === "live"
+        ? "MQTT LIVE"
+        : live.link === "connecting" || live.link === "reconnecting"
+          ? "SYNC..."
+          : "OFFLINE";
+  const linkOk = live.transportMode === "LORA" || live.link === "live";
 
   return (
     <div className="workstation">
@@ -148,7 +151,8 @@ export default function DashboardPage() {
         onReleaseLock={handleReleaseLock}
         onLogout={logout}
         liveLinkLabel={linkLabel}
-        liveLinkOk={live.link === "live"}
+        liveLinkOk={linkOk}
+        lora={live.lora}
         quickTelemetry={{
           batteryVoltage: live.telemetry.batteryVoltage,
           batteryPercent: live.telemetry.batteryPercent,
@@ -163,18 +167,19 @@ export default function DashboardPage() {
         <div className="cockpit-grid">
           {/* Left Column: Visual awareness & Perception inspector */}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <CameraView streams={streams} visionFps={live.visionFps} />
+            <CameraView streams={streams} visionFps={live.visionFps} loraMode={live.isLoraActive} />
             <LineOfThoughtPanel data={live.thought} />
           </div>
 
           {/* Right Column: Actuators, telemetry & Radar */}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <MovementPanel
-              canControl={Boolean(lock?.isHeldByCaller)}
+              canControl={Boolean(lock?.isHeldByCaller) || live.isLoraActive}
               holderUsername={lock?.holderUsername}
               onSendCommand={handleSendCommand}
               onAcquireLock={handleAcquireLock}
               onEstop={() => live.sendEstop()}
+              transportMode={live.transportMode}
             />
             <SensorsTelemetryPanel telemetry={live.telemetry} />
             <LidarRadar

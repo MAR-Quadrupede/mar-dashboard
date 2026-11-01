@@ -19,6 +19,7 @@ type Props = {
   onSendCommand: (command: string, speed?: number) => Promise<void>;
   onAcquireLock?: () => Promise<void>;
   onEstop?: () => void;
+  transportMode?: "LORA" | "IP";
 };
 
 export function MovementPanel({
@@ -26,7 +27,8 @@ export function MovementPanel({
   holderUsername,
   onSendCommand,
   onAcquireLock,
-  onEstop
+  onEstop,
+  transportMode = "IP"
 }: Props) {
   const [speed, setSpeed] = useState<number>(50);
   const [activeKey, setActiveKey] = useState<string | null>(null);
@@ -109,7 +111,26 @@ export function MovementPanel({
         <div className="panel-title">
           <span>CONTROLLO VETTORIALE & ANDATURA</span>
         </div>
-        <span className="tag mono">KEY: WASD / SPACE</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {transportMode === "LORA" ? (
+            <span
+              className="tag mono"
+              style={{
+                background: "rgba(16, 185, 129, 0.15)",
+                color: "#34d399",
+                border: "1px solid rgba(16, 185, 129, 0.4)",
+                fontSize: 10
+              }}
+            >
+              LINK: LoRa USB (PREFERITO)
+            </span>
+          ) : (
+            <span className="tag mono" style={{ fontSize: 10 }}>
+              LINK: IP WebSocket
+            </span>
+          )}
+          <span className="tag mono">KEY: WASD / SPACE</span>
+        </div>
       </div>
 
       <div className="panel-body">

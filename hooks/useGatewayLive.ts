@@ -109,6 +109,16 @@ const emptyTelemetry = (): RoverTelemetry => ({
 
 export type VisionFps = { camera?: number; depth?: number; stream?: number };
 
+function normalizeFsmState(raw?: string): RoverTelemetry["fsmState"] {
+  const s = (raw || "").toUpperCase();
+  if (s.includes("EMERGENCY") || s.includes("STOP") || s.includes("ESTOP")) return "EMERGENCY_STOP";
+  if (s.includes("AVOID") || s.includes("HAZARD")) return "AVOIDANCE";
+  if (s.includes("INSPECT") || s.includes("YOLO")) return "INSPECTING_OBJECT";
+  if (s.includes("MANUAL")) return "MANUAL";
+  if (s.includes("PATROL") || s.includes("FORWARD")) return "PATROL_FORWARD";
+  return "IDLE";
+}
+
 export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null) {
   const [link, setLink] = useState<LiveLinkState>("offline");
   const [telemetry, setTelemetry] = useState<RoverTelemetry>(emptyTelemetry);
@@ -375,6 +385,7 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
       setTelemetry((prev) => {
         const batteryVoltage = parsed.batteryVoltage ?? prev.batteryVoltage;
         const batteryPercent = parsed.batteryPercent ?? prev.batteryPercent;
+        const mappedFsm = parsed.fsmState ? normalizeFsmState(parsed.fsmState) : prev.fsmState;
         const next: RoverTelemetry = {
           ...prev,
           rollDegrees: parsed.rollDegrees ?? prev.rollDegrees,
@@ -383,7 +394,7 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
           ultrasonicMeters: parsed.ultrasonicMeters ?? prev.ultrasonicMeters,
           batteryVoltage,
           batteryPercent,
-          fsmState: parsed.fsmState ?? prev.fsmState,
+          fsmState: mappedFsm,
           connectivity: "online",
           updatedAt: nowIso
         };
