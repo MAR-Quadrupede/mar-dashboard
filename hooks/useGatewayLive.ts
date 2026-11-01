@@ -454,43 +454,37 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
       const [cmd, paramFromCmd] = raw.split(",", 2);
       const param = paramFromCmd !== undefined ? paramFromCmd : speed !== undefined ? String(speed) : "";
 
-      // Priorità LoRa: se il modulo USB è connesso, è il metodo di trasmissione preferito
+      let loraSent = false;
       if (lora.isConnected) {
         const frame = param !== "" ? `CMD:${cmd.toUpperCase()},${param}` : `CMD:${cmd.toUpperCase()}`;
         lora.sendFrame(frame);
-        // Invio mirrored a WebSocket se per caso è aperto (senza bloccare se offline)
-        sendJson({
-          type: "MOTION_CMD",
-          data: {
-            cmd: cmd.toUpperCase(),
-            param,
-            reason: "DASHBOARD_LORA_MANUAL",
-            state: "MANUAL"
-          }
-        });
-        return true;
+        loraSent = true;
       }
 
-      return sendJson({
+      // Invia sempre anche al gateway via WebSocket se aperto (entrambi convergono nel GatewayCommandHub)
+      const wsSent = sendJson({
         type: "MOTION_CMD",
         data: {
           cmd: cmd.toUpperCase(),
           param,
-          reason: "DASHBOARD_MANUAL",
+          reason: loraSent ? "DASHBOARD_LORA_DUAL" : "DASHBOARD_MANUAL",
           state: "MANUAL"
         }
       });
+
+      return loraSent || wsSent;
     },
     [sendJson, lora.isConnected, lora.sendFrame]
   );
 
   const sendEstop = useCallback(() => {
+    let loraSent = false;
     if (lora.isConnected) {
       lora.sendFrame("ESTOP");
-      sendJson({ type: "ESTOP" });
-      return true;
+      loraSent = true;
     }
-    return sendJson({ type: "ESTOP" });
+    const wsSent = sendJson({ type: "ESTOP" });
+    return loraSent || wsSent;
   }, [sendJson, lora.isConnected, lora.sendFrame]);
 
   useEffect(() => {
