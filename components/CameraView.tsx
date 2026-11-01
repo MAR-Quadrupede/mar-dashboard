@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Eye, RefreshCw, Maximize2, AlertCircle, Play, Image as ImageIcon } from "lucide-react";
+import { Eye, RefreshCw, Maximize2, AlertCircle, Play, Image as ImageIcon, Radio } from "lucide-react";
 
 type Stream = {
   id: string;
@@ -14,6 +14,7 @@ type Stream = {
 type Props = {
   streams?: Stream[];
   visionFps?: { camera?: number; depth?: number; stream?: number } | null;
+  loraMode?: boolean;
 };
 
 function isSafariBrowser(): boolean {

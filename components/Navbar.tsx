@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Lock, Unlock, LogOut, Sliders, Shield, Terminal } from "lucide-react";
+import { Lock, Unlock, LogOut, Sliders, Shield, Terminal, Radio } from "lucide-react";
 
 type ControlLockInfo = {
   isHeld: boolean;
@@ -21,6 +21,17 @@ type QuickTelemetry = {
   rollDegrees?: number;
 };
 
+type LoraControl = {
+  isSupported: boolean;
+  isConnected: boolean;
+  isConnecting: boolean;
+  rxCount: number;
+  txCount: number;
+  lastError: string | null;
+  connect: (baudRate?: number) => Promise<boolean>;
+  disconnect: () => Promise<void>;
+};
+
 type Props = {
   username?: string;
   isAdmin?: boolean;
@@ -31,6 +42,7 @@ type Props = {
   liveLinkLabel?: string;
   liveLinkOk?: boolean;
   quickTelemetry?: QuickTelemetry;
+  lora?: LoraControl;
 };
 
 export function Navbar({
@@ -42,7 +54,8 @@ export function Navbar({
   onLogout,
   liveLinkLabel,
   liveLinkOk,
-  quickTelemetry
+  quickTelemetry,
+  lora
 }: Props) {
   const pathname = usePathname();
 
@@ -67,7 +80,15 @@ export function Navbar({
         </div>
 
         {liveLinkLabel && (
-          <span className={`tag ${liveLinkOk ? "tag-success" : "tag-warning"} mono`}>
+          <span
+            className={`tag ${
+              liveLinkLabel.includes("LORA")
+                ? "tag-success"
+                : liveLinkOk
+                  ? "tag-success"
+                  : "tag-warning"
+            } mono`}
+          >
             {liveLinkLabel}
           </span>
         )}
@@ -89,6 +110,83 @@ export function Navbar({
             <span>IMPOSTAZIONI</span>
           </Link>
         </nav>
+
+        {/* LoRa USB Ground Link Trigger */}
+        {lora && (
+          <div style={{ display: "flex", alignItems: "center", marginLeft: 4 }}>
+            {lora.isConnected ? (
+              <div
+                className="tag mono"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  background: "rgba(16, 185, 129, 0.15)",
+                  border: "1px solid rgba(16, 185, 129, 0.5)",
+                  color: "#34d399",
+                  fontSize: 10,
+                  padding: "3px 8px",
+                  borderRadius: 4
+                }}
+                title={`LoRa 868MHz connesso via USB | RX: ${lora.rxCount} pacchetti | TX: ${lora.txCount} comandi`}
+              >
+                <Radio size={11} className="spin-slow" />
+                <span>LORA USB (868MHz)</span>
+                <span style={{ opacity: 0.7, fontSize: 9 }}>
+                  RX:{lora.rxCount} TX:{lora.txCount}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => lora.disconnect()}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "inherit",
+                    cursor: "pointer",
+                    fontSize: 10,
+                    fontWeight: "bold",
+                    padding: "0 2px"
+                  }}
+                  title="Disconnetti porta seriale LoRa"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-xs mono"
+                onClick={() => {
+                  if (!lora.isSupported) {
+                    alert(
+                      "La Web Serial API richiede un contesto sicuro (HTTPS o http://localhost:3000) e un browser compatibile (Google Chrome, Microsoft Edge, Opera, Chromium).\n\nSe sei connesso tramite IP Tailscale su HTTP puro, puoi aprire un tunnel locale (es. ssh -L 3000:localhost:3000) oppure abilitare il flag chrome://flags/#unsafely-treat-insecure-origin-as-secure."
+                    );
+                    return;
+                  }
+                  lora.connect(9600);
+                }}
+                disabled={lora.isConnecting}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                  fontSize: 10,
+                  background: "rgba(59, 130, 246, 0.12)",
+                  borderColor: "rgba(59, 130, 246, 0.4)",
+                  color: "#60a5fa"
+                }}
+                title={
+                  lora.isSupported
+                    ? "Collega transceiver radio LoRa SX1262 / dongle USB locale (9600 baud)"
+                    : "Web Serial non disponibile su questo browser/contesto (clicca per dettagli)"
+                }
+              >
+                <Radio size={11} />
+                <span>{lora.isConnecting ? "APERTURA..." : "COLLEGA LORA USB"}</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Quick Telemetry Tape */}

@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RoverLineOfThought, RoverTelemetry, ThoughtEvent } from "@/lib/roverData";
+import { useLoraSerial } from "@/hooks/useLoraSerial";
+import type { ParsedLoraTelemetry } from "@/lib/loraParser";
 
-export type LiveLinkState = "connecting" | "live" | "reconnecting" | "offline";
+export type LiveLinkState = "connecting" | "live" | "reconnecting" | "offline" | "lora";
 
 function resolveGatewayWsUrl(configured?: string | null): string {
   if (typeof window === "undefined") {
@@ -12,6 +14,11 @@ function resolveGatewayWsUrl(configured?: string | null): string {
 
   const host = window.location.hostname || "127.0.0.1";
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+
+  // When hosted on Cloudflare Tunnel remote domain (gianlucamorello.it)
+  if (host.includes("gianlucamorello.it")) {
+    return `wss://mar-gateway.gianlucamorello.it`;
+  }
 
   if (configured && configured.trim()) {
     const raw = configured.trim();
@@ -360,6 +367,67 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
     [pushThought]
   );
 
+  const applyLoraTelemetry = useCallback(
+    (parsed: ParsedLoraTelemetry) => {
+      const nowIso = new Date().toISOString();
+      setLastTopicAt(Date.now());
+
+      setTelemetry((prev) => {
+        const batteryVoltage = parsed.batteryVoltage ?? prev.batteryVoltage;
+        const batteryPercent = parsed.batteryPercent ?? prev.batteryPercent;
+        const next: RoverTelemetry = {
+          ...prev,
+          rollDegrees: parsed.rollDegrees ?? prev.rollDegrees,
+          pitchDegrees: parsed.pitchDegrees ?? prev.pitchDegrees,
+          frontDistanceMeters: parsed.frontDistanceMeters ?? prev.frontDistanceMeters,
+          ultrasonicMeters: parsed.ultrasonicMeters ?? prev.ultrasonicMeters,
+          batteryVoltage,
+          batteryPercent,
+          fsmState: parsed.fsmState ?? prev.fsmState,
+          connectivity: "online",
+          updatedAt: nowIso
+        };
+        telemRef.current = next;
+        return next;
+      });
+
+      if (parsed.fsmState) {
+        const stage = stageFromFsm(parsed.fsmState, false);
+        const risk = parsed.riskLevel || "LOW";
+        const stateName = parsed.fsmState;
+        const reasonText = parsed.fsmReason || "Telemetria Radio LoRa 868MHz";
+
+        setThought((prev) => ({
+          ...prev,
+          currentStage: stage,
+          currentDecision: {
+            command: stateName,
+            justification: reasonText,
+            riskLevel: risk
+          }
+        }));
+
+        pushThought({
+          id: `lora-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          timestamp: formatTime(parsed.timestamp / 1000),
+          stage,
+          targetObject: "LoRa Ground Link",
+          confidence: 1.0,
+          distanceMeters: parsed.frontDistanceMeters ?? parsed.ultrasonicMeters ?? 0,
+          azimuthDeg: 0,
+          reasoning: `Radio RX [868MHz]: ${parsed.raw}`,
+          chosenAction: stateName
+        });
+      }
+    },
+    [pushThought]
+  );
+
+  const lora = useLoraSerial({
+    baudRate: 9600,
+    onTelemetry: applyLoraTelemetry
+  });
+
   const sendJson = useCallback((msg: Record<string, unknown>) => {
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -374,6 +442,24 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
       const raw = command.replace(/^CMD:/i, "").trim();
       const [cmd, paramFromCmd] = raw.split(",", 2);
       const param = paramFromCmd !== undefined ? paramFromCmd : speed !== undefined ? String(speed) : "";
+
+      // Priorità LoRa: se il modulo USB è connesso, è il metodo di trasmissione preferito
+      if (lora.isConnected) {
+        const frame = param !== "" ? `CMD:${cmd.toUpperCase()},${param}` : `CMD:${cmd.toUpperCase()}`;
+        lora.sendFrame(frame);
+        // Invio mirrored a WebSocket se per caso è aperto (senza bloccare se offline)
+        sendJson({
+          type: "MOTION_CMD",
+          data: {
+            cmd: cmd.toUpperCase(),
+            param,
+            reason: "DASHBOARD_LORA_MANUAL",
+            state: "MANUAL"
+          }
+        });
+        return true;
+      }
+
       return sendJson({
         type: "MOTION_CMD",
         data: {
@@ -384,10 +470,17 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
         }
       });
     },
-    [sendJson]
+    [sendJson, lora.isConnected, lora.sendFrame]
   );
 
-  const sendEstop = useCallback(() => sendJson({ type: "ESTOP" }), [sendJson]);
+  const sendEstop = useCallback(() => {
+    if (lora.isConnected) {
+      lora.sendFrame("ESTOP");
+      sendJson({ type: "ESTOP" });
+      return true;
+    }
+    return sendJson({ type: "ESTOP" });
+  }, [sendJson, lora.isConnected, lora.sendFrame]);
 
   useEffect(() => {
     disposed.current = false;
@@ -482,7 +575,10 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
   }, [enabled, configuredWsUrl, applyPacket, sendJson]);
 
   return {
-    link,
+    link: lora.isConnected ? ("lora" as LiveLinkState) : link,
+    transportMode: lora.isConnected ? ("LORA" as const) : ("IP" as const),
+    isLoraActive: lora.isConnected,
+    lora,
     telemetry,
     thought,
     visionFps,
