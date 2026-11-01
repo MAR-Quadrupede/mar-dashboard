@@ -26,7 +26,6 @@ export default function DashboardPage() {
     try {
       const statusRes = await api.getRoverStatus(token);
       if (statusRes?.lock) setLock(statusRes.lock);
-      // Prefer live WS telemetry; API mock is ignored when link is live
     } catch {
       // ignore
     }
@@ -91,7 +90,6 @@ export default function DashboardPage() {
   const handleSendCommand = async (command: string, speed?: number) => {
     if (!token) return;
 
-    // E-CUT / STOP always go to MQTT immediately via gateway WS
     const upper = command.toUpperCase();
     if (upper.includes("ESTOP") || upper === "E-CUT" || upper === "CMD:ESTOP") {
       live.sendEstop();
@@ -103,7 +101,7 @@ export default function DashboardPage() {
       await api.sendCommand(token, command, speed);
     } catch (err: any) {
       if (err.status === 403) {
-        alert(err.message || "Non hai i permessi per inviare comandi: controllo occupato da un altro utente.");
+        alert(err.message || "Permesso negato: il controllo è detenuto da un altro operatore.");
         refreshLock();
       } else if (!pushed) {
         console.error("Command error:", err);
@@ -113,8 +111,18 @@ export default function DashboardPage() {
 
   if (authLoading) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)" }}>
-        Caricamento console...
+      <div
+        className="mono"
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "var(--text-muted)",
+          fontSize: 12
+        }}
+      >
+        INIZIALIZZAZIONE CONSOLE M.A.R....
       </div>
     );
   }
@@ -125,13 +133,13 @@ export default function DashboardPage() {
 
   const linkLabel =
     live.link === "live"
-      ? "LIVE MQTT"
+      ? "MQTT LIVE"
       : live.link === "connecting" || live.link === "reconnecting"
-        ? "SYNC…"
+        ? "SYNC..."
         : "OFFLINE";
 
   return (
-    <div className="container">
+    <div className="workstation">
       <Navbar
         username={user?.username}
         isAdmin={user?.isAdmin}
@@ -141,28 +149,40 @@ export default function DashboardPage() {
         onLogout={logout}
         liveLinkLabel={linkLabel}
         liveLinkOk={live.link === "live"}
+        quickTelemetry={{
+          batteryVoltage: live.telemetry.batteryVoltage,
+          batteryPercent: live.telemetry.batteryPercent,
+          currentAmps: live.telemetry.currentAmps,
+          temperatureCelsius: live.telemetry.temperatureCelsius,
+          pitchDegrees: live.telemetry.pitchDegrees,
+          rollDegrees: live.telemetry.rollDegrees
+        }}
       />
 
-      <main className="grid-main">
-        <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <CameraView streams={streams} visionFps={live.visionFps} />
-          <LineOfThoughtPanel data={live.thought} />
-        </section>
+      <main className="workstation-content">
+        <div className="cockpit-grid">
+          {/* Left Column: Visual awareness & Perception inspector */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <CameraView streams={streams} visionFps={live.visionFps} />
+            <LineOfThoughtPanel data={live.thought} />
+          </div>
 
-        <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <MovementPanel
-            canControl={Boolean(lock?.isHeldByCaller)}
-            holderUsername={lock?.holderUsername}
-            onSendCommand={handleSendCommand}
-            onAcquireLock={handleAcquireLock}
-            onEstop={() => live.sendEstop()}
-          />
-          <SensorsTelemetryPanel telemetry={live.telemetry} />
-          <LidarRadar
-            points={live.lidarPointsCloud}
-            frontDistanceM={live.telemetry.frontDistanceMeters}
-          />
-        </section>
+          {/* Right Column: Actuators, telemetry & Radar */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <MovementPanel
+              canControl={Boolean(lock?.isHeldByCaller)}
+              holderUsername={lock?.holderUsername}
+              onSendCommand={handleSendCommand}
+              onAcquireLock={handleAcquireLock}
+              onEstop={() => live.sendEstop()}
+            />
+            <SensorsTelemetryPanel telemetry={live.telemetry} />
+            <LidarRadar
+              points={live.lidarPointsCloud}
+              frontDistanceM={live.telemetry.frontDistanceMeters}
+            />
+          </div>
+        </div>
       </main>
     </div>
   );

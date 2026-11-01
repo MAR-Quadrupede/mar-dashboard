@@ -27,15 +27,15 @@ type Props = {
 export function SensorsTelemetryPanel({ telemetry }: Props) {
   if (!telemetry) {
     return (
-      <div className="card">
-        <div className="card-header">
-          <div className="card-title">
-            <Activity size={15} />
-            <span>Sensori & Telemetria di Bordo</span>
+      <div className="panel">
+        <div className="panel-header">
+          <div className="panel-title">
+            <Activity size={13} />
+            <span>TELEMETRIA SENSORI & HARDWARE</span>
           </div>
         </div>
-        <div style={{ padding: 16, textAlign: "center", color: "var(--text-muted)" }}>
-          In attesa dei dati telemetrici...
+        <div style={{ padding: 16, textAlign: "center", color: "var(--text-muted)", fontSize: 11 }}>
+          In attesa pacchetto telemetrico...
         </div>
       </div>
     );
@@ -59,140 +59,175 @@ export function SensorsTelemetryPanel({ telemetry }: Props) {
 
   const isLowBatt = batteryPercent < 25;
   const isHot = temperatureCelsius > 65;
+  const powerWatts = batteryVoltage * currentAmps;
 
   return (
-    <div className="card">
+    <div className="panel">
       {/* Header */}
-      <div className="card-header">
-        <div className="card-title">
-          <Activity size={15} />
-          <span>Sensori & Telemetria Hardware</span>
+      <div className="panel-header">
+        <div className="panel-title">
+          <Activity size={13} />
+          <span>TELEMETRIA SENSORI & HARDWARE</span>
         </div>
-        <span className={`badge ${connectivity === "online" ? "badge-success" : "badge-warning"}`}>
-          {connectivity === "online" ? "Link Seriale Attivo" : "Link Degradato"}
-        </span>
-      </div>
-
-      {/* Row 1: Power & Battery */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase" }}>
-          <span>Alimentazione Pacco 4S</span>
-          <span className="mono" style={{ color: isLowBatt ? "var(--color-danger)" : "var(--color-success)" }}>
-            {batteryPercent}%
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span className="tag mono">FSM: {fsmState || "STANDBY"}</span>
+          <span
+            className={`tag mono ${
+              connectivity === "online" ? "tag-success" : "tag-warning"
+            }`}
+          >
+            {connectivity === "online" ? "LINK ATTIVO" : "DEGRADATO"}
           </span>
         </div>
+      </div>
 
-        {/* Minimal Progress Bar */}
-        <div style={{ width: "100%", height: 6, background: "var(--bg-input)", borderRadius: 3, overflow: "hidden" }}>
+      <div className="panel-body">
+        {/* Section 1: Power & Battery 4S */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              Alimentazione Pacco 4S LiPo
+            </span>
+            <span
+              className="mono"
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: isLowBatt ? "var(--color-danger)" : "var(--color-success)"
+              }}
+            >
+              SoC {batteryPercent}%
+            </span>
+          </div>
+
+          {/* Precision Meter Bar */}
           <div
             style={{
-              width: `${Math.min(100, Math.max(0, batteryPercent))}%`,
-              height: "100%",
-              background: isLowBatt ? "var(--color-danger)" : batteryPercent < 45 ? "var(--color-warning)" : "var(--color-success)",
-              transition: "width 0.3s ease"
+              width: "100%",
+              height: 4,
+              background: "var(--bg-input)",
+              borderRadius: 2,
+              overflow: "hidden"
             }}
-          />
-        </div>
-
-        <div className="metric-row" style={{ marginTop: 4 }}>
-          <div className="metric-item">
-            <div className="metric-label">Tensione Pacco</div>
-            <div className="metric-val mono">{batteryVoltage.toFixed(1)} <span style={{ fontSize: 11, color: "var(--text-muted)" }}>V</span></div>
-          </div>
-          <div className="metric-item">
-            <div className="metric-label">Corrente</div>
-            <div className="metric-val mono">{currentAmps.toFixed(1)} <span style={{ fontSize: 11, color: "var(--text-muted)" }}>A</span></div>
-          </div>
-          <div className="metric-item">
-            <div className="metric-label">Potenza</div>
-            <div className="metric-val mono">{(batteryVoltage * currentAmps).toFixed(0)} <span style={{ fontSize: 11, color: "var(--text-muted)" }}>W</span></div>
-          </div>
-        </div>
-      </div>
-
-      {/* Row 2: Distance & Environmental Sensors */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, borderTop: "1px solid var(--border-subtle)", paddingTop: 10 }}>
-        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase" }}>
-          Sensori di Prossimità & Perimetro
-        </div>
-
-        <div className="metric-row">
-          <div className="metric-item">
-            <div className="metric-label">Ultrasuoni (A2)</div>
+          >
             <div
-              className="metric-val mono"
-              style={{ color: ultrasonicMeters > 0 && ultrasonicMeters < 0.8 ? "var(--color-danger)" : undefined }}
-            >
-              {ultrasonicMeters > 0 ? ultrasonicMeters.toFixed(2) : "—"}{" "}
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>m</span>
+              style={{
+                width: `${Math.min(100, Math.max(0, batteryPercent))}%`,
+                height: "100%",
+                background: isLowBatt
+                  ? "var(--color-danger)"
+                  : batteryPercent < 45
+                  ? "var(--color-warning)"
+                  : "var(--color-success)"
+              }}
+            />
+          </div>
+
+          <div className="field-grid mono">
+            <div className="field-cell">
+              <span className="field-label">TENSIONE</span>
+              <span className="field-value">
+                {batteryVoltage.toFixed(1)} <span className="field-unit">V</span>
+              </span>
             </div>
-          </div>
 
-          <div className="metric-item">
-            <div className="metric-label">LiDAR Fronte</div>
-            <div className="metric-val mono" style={{ color: frontDistanceMeters < 0.8 ? "var(--color-danger)" : undefined }}>
-              {frontDistanceMeters.toFixed(2)} <span style={{ fontSize: 11, color: "var(--text-muted)" }}>m</span>
+            <div className="field-cell">
+              <span className="field-label">CORRENTE</span>
+              <span className="field-value">
+                {currentAmps.toFixed(1)} <span className="field-unit">A</span>
+              </span>
             </div>
-          </div>
 
-          <div className="metric-item">
-            <div className="metric-label">LiDAR 360°</div>
-            <div className="metric-val mono">{lidarPoints} <span style={{ fontSize: 11, color: "var(--text-muted)" }}>punti</span></div>
-          </div>
-        </div>
-
-        <div className="metric-row" style={{ marginTop: 4 }}>
-          <div className="metric-item">
-            <div className="metric-label">Temp. RPi 5</div>
-            <div className="metric-val mono" style={{ color: isHot ? "var(--color-danger)" : undefined }}>
-              {temperatureCelsius.toFixed(1)} <span style={{ fontSize: 11, color: "var(--text-muted)" }}>°C</span>
+            <div className="field-cell">
+              <span className="field-label">POTENZA</span>
+              <span className="field-value">
+                {powerWatts.toFixed(0)} <span className="field-unit">W</span>
+              </span>
             </div>
-          </div>
-        </div>
-      </div>
 
-      {/* Row 3: IMU Attitude (Pitch & Roll) */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, borderTop: "1px solid var(--border-subtle)", paddingTop: 10 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase" }}>
-          <span>Inclinazione Chassis (IMU)</span>
-          <span style={{ color: Math.abs(rollDegrees) > 20 || Math.abs(pitchDegrees) > 20 ? "var(--color-danger)" : "var(--color-success)" }}>
-            {Math.abs(rollDegrees) > 20 || Math.abs(pitchDegrees) > 20 ? "Inclinazione Elevata" : "Assetto Stabile"}
-          </span>
-        </div>
-
-        <div className="metric-row">
-          <div className="metric-item">
-            <div className="metric-label">Rollio (Roll)</div>
-            <div className="metric-val mono">{rollDegrees >= 0 ? `+${rollDegrees.toFixed(1)}` : rollDegrees.toFixed(1)}°</div>
-          </div>
-
-          <div className="metric-item">
-            <div className="metric-label">Beccheggio (Pitch)</div>
-            <div className="metric-val mono">{pitchDegrees >= 0 ? `+${pitchDegrees.toFixed(1)}` : pitchDegrees.toFixed(1)}°</div>
-          </div>
-
-          <div className="metric-item">
-            <div className="metric-label">Stato Autonomo</div>
-            <div className="metric-val" style={{ fontSize: 13, fontWeight: 700, color: "var(--color-info)" }}>
-              {fsmState}
+            <div className="field-cell">
+              <span className="field-label">TEMP RPi</span>
+              <span
+                className="field-value"
+                style={{ color: isHot ? "var(--color-danger)" : undefined }}
+              >
+                {temperatureCelsius.toFixed(0)} <span className="field-unit">°C</span>
+              </span>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Row 4: GNSS / sync stamp */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--bg-input)", padding: "8px 10px", borderRadius: "var(--radius-sm)", fontSize: 12, borderTop: "1px solid var(--border-subtle)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <MapPin size={13} color="var(--text-muted)" />
-          <span className="mono">
-            {latitude || longitude
-              ? `${latitude.toFixed(5)}° N, ${longitude.toFixed(5)}° E`
-              : `Aggiornato ${new Date(telemetry.updatedAt).toLocaleTimeString()}`}
-          </span>
+        {/* Section 2: Proximity & Spatial Obstacles */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, borderTop: "1px solid var(--border-subtle)", paddingTop: 8 }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            Distanziometri & Perimetro
+          </div>
+
+          <div className="field-grid mono">
+            <div className="field-cell">
+              <span className="field-label">LiDAR FRONTE</span>
+              <span
+                className="field-value"
+                style={{
+                  color: frontDistanceMeters > 0 && frontDistanceMeters < 0.8 ? "var(--color-danger)" : undefined
+                }}
+              >
+                {frontDistanceMeters > 0 ? frontDistanceMeters.toFixed(2) : "—"}{" "}
+                <span className="field-unit">m</span>
+              </span>
+            </div>
+
+            <div className="field-cell">
+              <span className="field-label">ULTRASUONI A2</span>
+              <span
+                className="field-value"
+                style={{
+                  color: ultrasonicMeters > 0 && ultrasonicMeters < 0.8 ? "var(--color-danger)" : undefined
+                }}
+              >
+                {ultrasonicMeters > 0 ? ultrasonicMeters.toFixed(2) : "—"}{" "}
+                <span className="field-unit">m</span>
+              </span>
+            </div>
+
+            <div className="field-cell">
+              <span className="field-label">PUNTI LiDAR</span>
+              <span className="field-value">
+                {lidarPoints} <span className="field-unit">pts</span>
+              </span>
+            </div>
+          </div>
         </div>
-        <span className={`badge ${connectivity === "online" ? "badge-success" : connectivity === "degraded" ? "badge-warning" : "badge-danger"}`}>
-          {connectivity === "online" ? "MQTT Live" : connectivity === "degraded" ? "Link Debole" : "Offline"}
-        </span>
+
+        {/* Section 3: IMU Attitude & Position */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, borderTop: "1px solid var(--border-subtle)", paddingTop: 8 }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            Assetto Dinamico IMU & GNSS
+          </div>
+
+          <div className="field-grid mono">
+            <div className="field-cell">
+              <span className="field-label">PITCH θ</span>
+              <span className="field-value">
+                {pitchDegrees > 0 ? `+${pitchDegrees.toFixed(1)}` : pitchDegrees.toFixed(1)} <span className="field-unit">°</span>
+              </span>
+            </div>
+
+            <div className="field-cell">
+              <span className="field-label">ROLL φ</span>
+              <span className="field-value">
+                {rollDegrees > 0 ? `+${rollDegrees.toFixed(1)}` : rollDegrees.toFixed(1)} <span className="field-unit">°</span>
+              </span>
+            </div>
+
+            <div className="field-cell" style={{ gridColumn: "span 2" }}>
+              <span className="field-label">COORDINATE GNSS</span>
+              <span className="field-value" style={{ fontSize: 11 }}>
+                {latitude !== 0 ? `${latitude.toFixed(5)}°, ${longitude.toFixed(5)}°` : "NO FIX SATELLITARE"}
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Camera, RefreshCw, Maximize2, AlertCircle, Play, Image as ImageIcon } from "lucide-react";
+import { Eye, RefreshCw, Maximize2, AlertCircle, Play, Image as ImageIcon } from "lucide-react";
 
 type Stream = {
   id: string;
@@ -42,7 +42,7 @@ function withQuery(url: string, params: Record<string, string | number>): string
   return `${u.pathname}${u.search}`;
 }
 
-/** Parse MJPEG multipart (or raw concatenated JPEGs) and paint onto a canvas. */
+/** Parse MJPEG multipart and paint onto canvas */
 async function playMjpegToCanvas(
   url: string,
   canvas: HTMLCanvasElement,
@@ -82,11 +82,9 @@ async function playMjpegToCanvas(
     if (done) break;
     if (value) append(value);
 
-    // Extract complete JPEG frames (FFD8 … FFD9)
     while (true) {
       const soi = findMarker(buffer, 0xff, 0xd8, 0);
       if (soi < 0) {
-        // keep last byte in case of split marker
         buffer = buffer.length ? buffer.slice(-1) : buffer;
         break;
       }
@@ -108,7 +106,6 @@ async function playMjpegToCanvas(
       onFrame();
     }
 
-    // Cap buffer growth if stream is corrupt
     if (buffer.length > 2_000_000) {
       buffer = buffer.slice(-64_000);
     }
@@ -129,14 +126,14 @@ export function CameraView({ streams = [], visionFps = null }: Props) {
 
   const leftStream = {
     id: "left",
-    name: "Camera Sinistra // YOLO On-Edge",
+    name: "CAM 01 // STEREO LEFT (YOLOv8)",
     url: resolveStreamUrl(rawLeft, "/api/video/left"),
     snapshotUrl: "/api/video/left?snapshot=1"
   };
 
   const rightStream = {
     id: "right",
-    name: "Camera Destra // Stereoscopia",
+    name: "CAM 02 // STEREO RIGHT (DEPTH)",
     url: resolveStreamUrl(rawRight, "/api/video/right"),
     snapshotUrl: "/api/video/right?snapshot=1"
   };
@@ -145,121 +142,115 @@ export function CameraView({ streams = [], visionFps = null }: Props) {
 
   const camFps = visionFps?.camera;
   const depthFps = visionFps?.depth;
-  const fpsLabel =
+  const fpsText =
     camFps != null
-      ? `Sorgente camera ${camFps.toFixed(0)} FPS · depth ${(depthFps ?? camFps).toFixed(0)} FPS`
-      : "Stream MJPEG (FPS riquadro = frame effettivamente disegnati)";
+      ? `Source: ${camFps.toFixed(0)} FPS | Depth: ${(depthFps ?? camFps).toFixed(0)} FPS`
+      : "Feed MJPEG attivo";
 
   return (
-    <div className="card">
-      <div className="card-header">
-        <div className="card-title">
-          <Camera size={15} />
-          <span>Visione Stereoscopica in Tempo Reale</span>
+    <div className="panel">
+      <div className="panel-header">
+        <div className="panel-title">
+          <Eye size={13} />
+          <span>FLUSSO OTTICO STEREOSCOPICO</span>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <div
-            style={{
-              display: "flex",
-              background: "var(--bg-app)",
-              padding: 2,
-              borderRadius: "var(--radius-sm)",
-              border: "1px solid var(--border-subtle)"
-            }}
-          >
+          {/* View mode segmented switcher */}
+          <div className="segmented-control" style={{ padding: 1 }}>
             <button
-              className={`btn btn-sm ${viewMode === "dual" ? "btn-primary" : ""}`}
-              style={{ border: "none", padding: "2px 8px", fontSize: 11 }}
+              className={`segmented-btn ${viewMode === "dual" ? "active" : ""}`}
+              style={{ padding: "3px 8px", fontSize: 10 }}
               onClick={() => setViewMode("dual")}
             >
-              Dual
+              DUAL
             </button>
             <button
-              className={`btn btn-sm ${viewMode === "left" ? "btn-primary" : ""}`}
-              style={{ border: "none", padding: "2px 8px", fontSize: 11 }}
+              className={`segmented-btn ${viewMode === "left" ? "active" : ""}`}
+              style={{ padding: "3px 8px", fontSize: 10 }}
               onClick={() => setViewMode("left")}
             >
-              Sinistra
+              LEFT (YOLO)
             </button>
             <button
-              className={`btn btn-sm ${viewMode === "right" ? "btn-primary" : ""}`}
-              style={{ border: "none", padding: "2px 8px", fontSize: 11 }}
+              className={`segmented-btn ${viewMode === "right" ? "active" : ""}`}
+              style={{ padding: "3px 8px", fontSize: 10 }}
               onClick={() => setViewMode("right")}
             >
-              Destra
+              RIGHT (DEPTH)
             </button>
           </div>
 
-          <button className="btn btn-sm" onClick={reload} title="Ricarica streaming">
-            <RefreshCw size={12} />
+          <button className="btn btn-xs" onClick={reload} title="Ricarica flusso ottico">
+            <RefreshCw size={11} />
           </button>
         </div>
       </div>
 
-      {safari && (
+      <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+        {safari && (
+          <div
+            style={{
+              padding: "6px 8px",
+              fontSize: 10,
+              color: "var(--text-secondary)",
+              background: "var(--bg-panel)",
+              border: "1px solid var(--border-default)",
+              borderRadius: "var(--radius-xs)"
+            }}
+          >
+            Modalità canvas attiva per compatibilità Safari.
+          </div>
+        )}
+
         <div
           style={{
-            margin: "0 0 10px",
-            padding: "8px 10px",
-            fontSize: 11,
-            lineHeight: 1.35,
-            color: "var(--text-secondary)",
-            background: "rgba(56, 189, 248, 0.1)",
-            border: "1px solid rgba(56, 189, 248, 0.35)",
-            borderRadius: "var(--radius-sm)"
+            display: "grid",
+            gridTemplateColumns: viewMode === "dual" ? "1fr 1fr" : "1fr",
+            gap: 8
           }}
         >
-          Su Safari lo stream usa un player MJPEG via fetch/canvas (non &lt;img&gt; multipart). Se resta lento,
-          Chrome è comunque più efficiente — ma non è obbligatorio.
+          {(viewMode === "dual" || viewMode === "left") && (
+            <TacticalFeedTile
+              key={`left-${refreshKey}`}
+              url={withQuery(leftStream.url, { k: refreshKey })}
+              fallbackSnapshotUrl={leftStream.snapshotUrl}
+              label={leftStream.name}
+              badge="YOLO ON-EDGE"
+            />
+          )}
+
+          {(viewMode === "dual" || viewMode === "right") && (
+            <TacticalFeedTile
+              key={`right-${refreshKey}`}
+              url={withQuery(rightStream.url, { k: refreshKey })}
+              fallbackSnapshotUrl={rightStream.snapshotUrl}
+              label={rightStream.name}
+              badge="STEREO DEPTH"
+            />
+          )}
         </div>
-      )}
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: viewMode === "dual" ? "1fr 1fr" : "1fr",
-          gap: 12
-        }}
-      >
-        {(viewMode === "dual" || viewMode === "left") && (
-          <CameraFeedTile
-            key={`left-${refreshKey}`}
-            url={withQuery(leftStream.url, { k: refreshKey })}
-            fallbackSnapshotUrl={leftStream.snapshotUrl}
-            label="Camera Sinistra"
-            badge="Left / HUD"
-          />
-        )}
-
-        {(viewMode === "dual" || viewMode === "right") && (
-          <CameraFeedTile
-            key={`right-${refreshKey}`}
-            url={withQuery(rightStream.url, { k: refreshKey })}
-            fallbackSnapshotUrl={rightStream.snapshotUrl}
-            label="Camera Destra"
-            badge="Right eye"
-          />
-        )}
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          fontSize: 11,
-          color: "var(--text-muted)",
-          paddingTop: 4
-        }}
-      >
-        <span>{fpsLabel}</span>
-        <span className="mono">proxy /api/video → :30080</span>
+        {/* Footer telemetry status line */}
+        <div
+          className="mono"
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            fontSize: 10,
+            color: "var(--text-muted)",
+            padding: "2px 4px"
+          }}
+        >
+          <span>{fpsText}</span>
+          <span>ROUTER: /api/video → PORT: 30080</span>
+        </div>
       </div>
     </div>
   );
 }
 
-function CameraFeedTile({
+function TacticalFeedTile({
   url,
   fallbackSnapshotUrl,
   label,
@@ -292,7 +283,6 @@ function CameraFeedTile({
     }
   }, []);
 
-  // Continuous MJPEG via fetch → canvas (works Chrome + Safari; counts real FPS)
   useEffect(() => {
     if (mode !== "stream") return;
     const canvas = canvasRef.current;
@@ -307,14 +297,12 @@ function CameraFeedTile({
         setStreamError(false);
         await playMjpegToCanvas(url, canvas, ac.signal, bumpFps);
         if (!stopped && !ac.signal.aborted) {
-          // stream ended — retry
           retryTimer = setTimeout(run, 400);
         }
       } catch (e) {
         if (ac.signal.aborted || stopped) return;
         errorCountRef.current += 1;
         if (errorCountRef.current >= 3) {
-          console.warn("MJPEG canvas player failed, falling back to snapshot", e);
           setMode("snapshot");
           setStreamError(false);
         } else {
@@ -331,7 +319,6 @@ function CameraFeedTile({
     };
   }, [mode, url, bumpFps]);
 
-  // Snapshot fallback polling (~10 Hz)
   useEffect(() => {
     if (mode !== "snapshot") return;
     let mounted = true;
@@ -387,9 +374,9 @@ function CameraFeedTile({
       ref={containerRef}
       style={{
         position: "relative",
-        background: "var(--bg-app)",
+        background: "var(--bg-inset)",
         border: "1px solid var(--border-default)",
-        borderRadius: "var(--radius-sm)",
+        borderRadius: "var(--radius-xs)",
         aspectRatio: "16 / 9",
         overflow: "hidden",
         display: "flex",
@@ -419,12 +406,31 @@ function CameraFeedTile({
         }}
       />
 
+      {/* Subtle HUD Reticle in center */}
+      <div
+        style={{
+          position: "absolute",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          width: 24,
+          height: 24,
+          pointerEvents: "none",
+          opacity: 0.35
+        }}
+      >
+        <div style={{ position: "absolute", top: 11, left: 0, width: 8, height: 2, background: "#fff" }} />
+        <div style={{ position: "absolute", top: 11, right: 0, width: 8, height: 2, background: "#fff" }} />
+        <div style={{ position: "absolute", left: 11, top: 0, width: 2, height: 8, background: "#fff" }} />
+        <div style={{ position: "absolute", left: 11, bottom: 0, width: 2, height: 8, background: "#fff" }} />
+      </div>
+
       {streamError && (
         <div
           style={{
             padding: 16,
             textAlign: "center",
-            fontSize: 12,
+            fontSize: 11,
             color: "var(--text-muted)",
             display: "flex",
             flexDirection: "column",
@@ -432,21 +438,22 @@ function CameraFeedTile({
             gap: 6
           }}
         >
-          <AlertCircle size={20} color="var(--color-warning)" />
-          <span style={{ fontWeight: 600, color: "var(--text-secondary)" }}>Flusso non disponibile</span>
+          <AlertCircle size={18} color="var(--color-warning)" />
+          <span style={{ fontWeight: 600, color: "var(--text-secondary)" }}>SEGNALE OTTICO ASSENTE</span>
           <button
-            className="btn btn-sm"
+            className="btn btn-xs"
             onClick={() => {
               errorCountRef.current = 0;
               setStreamError(false);
               setMode("stream");
             }}
           >
-            Riprova Stream
+            Riconnetti
           </button>
         </div>
       )}
 
+      {/* Tactical HUD Header */}
       <div
         style={{
           position: "absolute",
@@ -460,14 +467,16 @@ function CameraFeedTile({
         }}
       >
         <span
+          className="mono"
           style={{
-            background: "rgba(11, 15, 25, 0.75)",
-            backdropFilter: "blur(2px)",
+            background: "rgba(12, 14, 18, 0.85)",
+            border: "1px solid var(--border-subtle)",
             padding: "2px 6px",
-            borderRadius: 3,
-            fontSize: 10,
-            fontWeight: 600,
-            color: "var(--text-main)"
+            borderRadius: 2,
+            fontSize: 9,
+            fontWeight: 700,
+            color: "var(--text-main)",
+            letterSpacing: "0.04em"
           }}
         >
           {label}
@@ -475,16 +484,16 @@ function CameraFeedTile({
 
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           <span
+            className="mono"
             style={{
-              background: "rgba(11, 15, 25, 0.75)",
+              background: "rgba(12, 14, 18, 0.85)",
+              border: "1px solid var(--border-subtle)",
               padding: "2px 6px",
-              borderRadius: 3,
-              fontSize: 10,
+              borderRadius: 2,
+              fontSize: 9,
               fontWeight: 700,
-              color: displayFps >= 8 ? "var(--color-info)" : "var(--color-warning)",
-              fontVariantNumeric: "tabular-nums"
+              color: displayFps >= 8 ? "var(--color-success)" : "var(--color-warning)"
             }}
-            title="Frame al secondo effettivamente disegnati in questo riquadro"
           >
             {displayFps} FPS
           </span>
@@ -495,13 +504,14 @@ function CameraFeedTile({
               setStreamError(false);
               setMode((m) => (m === "stream" ? "snapshot" : "stream"));
             }}
+            className="mono"
             style={{
-              background: mode === "snapshot" ? "rgba(234, 179, 8, 0.85)" : "rgba(11, 15, 25, 0.75)",
-              color: mode === "snapshot" ? "#000" : "var(--color-info)",
-              border: "none",
+              background: mode === "snapshot" ? "rgba(234, 179, 8, 0.9)" : "rgba(12, 14, 18, 0.85)",
+              color: mode === "snapshot" ? "#000" : "var(--text-secondary)",
+              border: "1px solid var(--border-subtle)",
               cursor: "pointer",
-              padding: "2px 6px",
-              borderRadius: 3,
+              padding: "2px 5px",
+              borderRadius: 2,
               fontSize: 9,
               fontWeight: 700,
               display: "flex",
@@ -510,17 +520,16 @@ function CameraFeedTile({
             }}
             title={mode === "snapshot" ? "Passa a Stream MJPEG" : "Passa a Snapshot"}
           >
-            {mode === "snapshot" ? <ImageIcon size={10} /> : <Play size={10} />}
-            {mode === "snapshot" ? "SNAPSHOT" : "STREAM"}
+            {mode === "snapshot" ? <ImageIcon size={9} /> : <Play size={9} />}
+            <span>{mode === "snapshot" ? "SNAP" : "STREAM"}</span>
           </button>
 
           <span
+            className="tag mono"
             style={{
-              background: "rgba(11, 15, 25, 0.75)",
-              padding: "2px 6px",
-              borderRadius: 3,
-              fontSize: 10,
-              color: "var(--color-info)"
+              fontSize: 9,
+              padding: "2px 5px",
+              background: "rgba(12, 14, 18, 0.85)"
             }}
           >
             {badge}
@@ -529,18 +538,18 @@ function CameraFeedTile({
           <button
             onClick={toggleFullscreen}
             style={{
-              background: "rgba(11, 15, 25, 0.75)",
-              border: "none",
+              background: "rgba(12, 14, 18, 0.85)",
+              border: "1px solid var(--border-subtle)",
               color: "var(--text-main)",
               cursor: "pointer",
-              padding: "3px 5px",
-              borderRadius: 3,
+              padding: "3px 4px",
+              borderRadius: 2,
               display: "flex",
               alignItems: "center"
             }}
             title="Schermo intero"
           >
-            <Maximize2 size={11} />
+            <Maximize2 size={10} />
           </button>
         </div>
       </div>

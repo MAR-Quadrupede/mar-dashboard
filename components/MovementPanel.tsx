@@ -4,15 +4,13 @@ import React, { useState, useEffect, useCallback } from "react";
 import { 
   ArrowUp, 
   ArrowDown, 
-  ArrowLeft, 
-  ArrowRight, 
   RotateCcw, 
   RotateCw, 
-  Octagon, 
+  Square,
   Lock, 
-  Gauge, 
-  ShieldAlert,
-  Footprints
+  ArrowUpLeft,
+  ArrowUpRight,
+  AlertTriangle
 } from "lucide-react";
 
 type Props = {
@@ -32,6 +30,7 @@ export function MovementPanel({
 }: Props) {
   const [speed, setSpeed] = useState<number>(50);
   const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [currentGait, setCurrentGait] = useState<string>("TROT");
 
   const send = useCallback(
     async (cmd: string, customSpeed?: number) => {
@@ -98,216 +97,238 @@ export function MovementPanel({
     };
   }, [canControl, send]);
 
+  const handleGait = async (gait: string) => {
+    setCurrentGait(gait);
+    await send(`CMD:GAIT_${gait}`);
+  };
+
   return (
-    <div className="card">
+    <div className="panel">
       {/* Header */}
-      <div className="card-header">
-        <div className="card-title">
-          <Footprints size={15} />
-          <span>Controllo Movimento & Assetto</span>
+      <div className="panel-header">
+        <div className="panel-title">
+          <span>CONTROLLO VETTORIALE & ANDATURA</span>
         </div>
-        <span className="badge badge-muted mono">WASD / D-Pad</span>
+        <span className="tag mono">KEY: WASD / SPACE</span>
       </div>
 
-      {/* Viewer Mode / Read-Only Warning Banner */}
-      {!canControl && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "10px 14px",
-            background: "rgba(245, 158, 11, 0.08)",
-            border: "1px solid rgba(245, 158, 11, 0.25)",
-            borderRadius: "var(--radius-sm)",
-            fontSize: 12,
-            gap: 12
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Lock size={15} color="var(--color-warning)" />
-            <span style={{ color: "var(--text-secondary)" }}>
-              {holderUsername
-                ? `Modalità sola lettura: Il robot è controllato da '${holderUsername}'`
-                : "Modalità sola lettura: Nessun pilota attivo"}
+      <div className="panel-body">
+        {/* Read-Only Interlock Banner */}
+        {!canControl && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "8px 10px",
+              background: "var(--color-warning-bg)",
+              border: "1px solid var(--color-warning-border)",
+              borderRadius: "var(--radius-xs)",
+              fontSize: 11,
+              gap: 8
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--color-warning)" }}>
+              <Lock size={13} />
+              <span>
+                {holderUsername
+                  ? `Sola lettura: Manovrato da @${holderUsername}`
+                  : "Sola lettura: Nessun pilota attivo"}
+              </span>
+            </div>
+
+            {onAcquireLock && (
+              <button
+                className="btn btn-xs btn-primary"
+                onClick={onAcquireLock}
+              >
+                Prendi Controllo
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Gait Selector */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            Andatura Cinematica
+          </div>
+          <div className="segmented-control">
+            {["STAND", "TROT", "WALK", "SIT"].map((g) => (
+              <button
+                key={g}
+                className={`segmented-btn ${currentGait === g ? "active" : ""}`}
+                onClick={() => handleGait(g)}
+                disabled={!canControl}
+              >
+                {g}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Tactical Directional Pad */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            Vettori di Spostamento
+          </div>
+
+          <div className="tac-pad">
+            {/* Row 1 */}
+            <button
+              className={`tac-pad-btn ${activeKey === "q" ? "active" : ""}`}
+              onClick={() => send("CMD:STRAFE_L")}
+              disabled={!canControl}
+              title="Strafe Sinistra (Q)"
+            >
+              <ArrowUpLeft size={14} />
+              <span className="tac-pad-key">Q</span>
+            </button>
+
+            <button
+              className={`tac-pad-btn ${activeKey === "w" ? "active" : ""}`}
+              onClick={() => send("CMD:FORWARD")}
+              disabled={!canControl}
+              title="Avanti (W)"
+            >
+              <ArrowUp size={15} />
+              <span className="tac-pad-key">W</span>
+            </button>
+
+            <button
+              className={`tac-pad-btn ${activeKey === "e" ? "active" : ""}`}
+              onClick={() => send("CMD:STRAFE_R")}
+              disabled={!canControl}
+              title="Strafe Destra (E)"
+            >
+              <ArrowUpRight size={14} />
+              <span className="tac-pad-key">E</span>
+            </button>
+
+            {/* Row 2 */}
+            <button
+              className={`tac-pad-btn ${activeKey === "a" ? "active" : ""}`}
+              onClick={() => send("CMD:TURN_L")}
+              disabled={!canControl}
+              title="Ruota Sinistra (A)"
+            >
+              <RotateCcw size={14} />
+              <span className="tac-pad-key">A</span>
+            </button>
+
+            <button
+              className={`tac-pad-btn ${activeKey === "space" ? "active" : ""}`}
+              onClick={() => send("CMD:STOP")}
+              disabled={!canControl}
+              style={{ background: "#262b36", borderColor: "#3f4756" }}
+              title="Stop (Spazio)"
+            >
+              <Square size={13} color="var(--color-warning)" />
+              <span className="tac-pad-key" style={{ color: "var(--color-warning)" }}>STOP</span>
+            </button>
+
+            <button
+              className={`tac-pad-btn ${activeKey === "d" ? "active" : ""}`}
+              onClick={() => send("CMD:TURN_R")}
+              disabled={!canControl}
+              title="Ruota Destra (D)"
+            >
+              <RotateCw size={14} />
+              <span className="tac-pad-key">D</span>
+            </button>
+
+            {/* Row 3 */}
+            <button
+              className="tac-pad-btn"
+              onClick={() => send("CMD:TURN_L,20")}
+              disabled={!canControl}
+              title="Indietro Sinistra"
+            >
+              <span style={{ fontSize: 10 }}>↶</span>
+              <span className="tac-pad-key">REV-L</span>
+            </button>
+
+            <button
+              className={`tac-pad-btn ${activeKey === "s" ? "active" : ""}`}
+              onClick={() => send("CMD:BACKWARD")}
+              disabled={!canControl}
+              title="Indietro (S)"
+            >
+              <ArrowDown size={15} />
+              <span className="tac-pad-key">S</span>
+            </button>
+
+            <button
+              className="tac-pad-btn"
+              onClick={() => send("CMD:TURN_R,20")}
+              disabled={!canControl}
+              title="Indietro Destra"
+            >
+              <span style={{ fontSize: 10 }}>↷</span>
+              <span className="tac-pad-key">REV-R</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Speed Regulator */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 2 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              Limitatore Velocità
+            </span>
+            <span className="mono" style={{ fontSize: 11, fontWeight: 700, color: "var(--text-main)" }}>
+              {speed}%
             </span>
           </div>
 
-          {onAcquireLock && (
-            <button
-              className="btn btn-sm btn-primary"
-              onClick={onAcquireLock}
-              style={{ padding: "3px 8px", fontSize: 11 }}
-            >
-              Prendi Controllo
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Gait / Posture Selectors */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase" }}>
-          Assetto e Andatura
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
-          {[
-            { label: "Trot", cmd: "CMD:TROT" },
-            { label: "Walk", cmd: "CMD:WALK" },
-            { label: "Stand", cmd: "CMD:STAND" },
-            { label: "Sit", cmd: "CMD:SIT" }
-          ].map((item) => (
-            <button
-              key={item.label}
-              className="btn btn-sm"
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input
+              type="range"
+              min="10"
+              max="100"
+              step="5"
+              value={speed}
+              onChange={(e) => setSpeed(Number(e.target.value))}
               disabled={!canControl}
-              onClick={() => send(item.cmd)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      </div>
+              style={{
+                flex: 1,
+                accentColor: "#38bdf8",
+                cursor: canControl ? "pointer" : "not-allowed"
+              }}
+            />
 
-      {/* Directional Keypad */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase" }}>
-          Manovra Direzionale
-        </div>
-
-        <div className="dpad">
-          {/* Row 1: Strafe Left, Forward, Strafe Right */}
-          <button
-            className="dpad-btn"
-            disabled={!canControl}
-            onClick={() => send("CMD:STRAFE_L")}
-            title="Passo laterale sinistro (Q)"
-            style={{ background: activeKey === "q" ? "#1e3a8a" : undefined }}
-          >
-            <ArrowLeft size={16} />
-            <span style={{ fontSize: 10, marginTop: 2 }}>Strafe L</span>
-          </button>
-
-          <button
-            className="dpad-btn"
-            disabled={!canControl}
-            onClick={() => send("CMD:FORWARD")}
-            title="Avanzamento (W)"
-            style={{ background: activeKey === "w" ? "#1e3a8a" : undefined }}
-          >
-            <ArrowUp size={18} color={canControl ? "var(--color-info)" : undefined} />
-            <span style={{ fontSize: 10, marginTop: 2 }}>Avanti</span>
-          </button>
-
-          <button
-            className="dpad-btn"
-            disabled={!canControl}
-            onClick={() => send("CMD:STRAFE_R")}
-            title="Passo laterale destro (E)"
-            style={{ background: activeKey === "e" ? "#1e3a8a" : undefined }}
-          >
-            <ArrowRight size={16} />
-            <span style={{ fontSize: 10, marginTop: 2 }}>Strafe R</span>
-          </button>
-
-          {/* Row 2: Turn Left, Stop/Brake, Turn Right */}
-          <button
-            className="dpad-btn"
-            disabled={!canControl}
-            onClick={() => send("CMD:TURN_L")}
-            title="Ruota a sinistra (A)"
-            style={{ background: activeKey === "a" ? "#1e3a8a" : undefined }}
-          >
-            <RotateCcw size={16} />
-            <span style={{ fontSize: 10, marginTop: 2 }}>Ruota L</span>
-          </button>
-
-          <button
-            className="dpad-btn dpad-stop"
-            disabled={!canControl}
-            onClick={() => send("CMD:STOP")}
-            title="Arresto immediato (Spazio)"
-          >
-            <Octagon size={18} />
-            <span style={{ fontSize: 10, marginTop: 2, fontWeight: 700 }}>STOP</span>
-          </button>
-
-          <button
-            className="dpad-btn"
-            disabled={!canControl}
-            onClick={() => send("CMD:TURN_R")}
-            title="Ruota a destra (D)"
-            style={{ background: activeKey === "d" ? "#1e3a8a" : undefined }}
-          >
-            <RotateCw size={16} />
-            <span style={{ fontSize: 10, marginTop: 2 }}>Ruota R</span>
-          </button>
-
-          {/* Row 3: Blank, Backward, Emergency */}
-          <div />
-
-          <button
-            className="dpad-btn"
-            disabled={!canControl}
-            onClick={() => send("CMD:BACKWARD")}
-            title="Retromarcia (S)"
-            style={{ background: activeKey === "s" ? "#1e3a8a" : undefined }}
-          >
-            <ArrowDown size={18} />
-            <span style={{ fontSize: 10, marginTop: 2 }}>Indietro</span>
-          </button>
-
-          <button
-            className="btn btn-sm btn-danger"
-            onClick={() => {
-              if (onEstop) onEstop();
-              else void send("CMD:EMERGENCY_STOP");
-            }}
-            title="Emergency Stop (sempre attivo)"
-            style={{ height: "100%", padding: 4, display: "flex", flexDirection: "column", gap: 2 }}
-          >
-            <ShieldAlert size={14} />
-            <span style={{ fontSize: 10 }}>E-CUT</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Speed Slider */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, color: "var(--text-muted)" }}>
-            <Gauge size={13} />
-            <span>Velocità / Spinta Nominale</span>
+            <div style={{ display: "flex", gap: 2 }}>
+              {[25, 50, 75, 100].map((preset) => (
+                <button
+                  key={preset}
+                  className="btn btn-xs mono"
+                  style={{
+                    padding: "2px 5px",
+                    background: speed === preset ? "var(--bg-panel-hover)" : undefined,
+                    borderColor: speed === preset ? "var(--border-strong)" : undefined
+                  }}
+                  onClick={() => setSpeed(preset)}
+                  disabled={!canControl}
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
           </div>
-          <span className="mono" style={{ fontSize: 12, fontWeight: 700 }}>
-            {speed}%
-          </span>
         </div>
 
-        <input
-          type="range"
-          min="10"
-          max="100"
-          step="5"
-          value={speed}
-          disabled={!canControl}
-          onChange={(e) => setSpeed(Number(e.target.value))}
-          style={{ width: "100%", cursor: canControl ? "pointer" : "not-allowed" }}
-        />
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
-          {[25, 50, 75, 100].map((val) => (
-            <button
-              key={val}
-              className={`btn btn-sm ${speed === val ? "btn-primary" : ""}`}
-              disabled={!canControl}
-              style={{ padding: "2px 4px", fontSize: 11 }}
-              onClick={() => setSpeed(val)}
-            >
-              {val}%
-            </button>
-          ))}
-        </div>
+        {/* Immediate Hardware E-Stop */}
+        <button
+          className="estop-btn"
+          onClick={() => {
+            if (onEstop) onEstop();
+            send("CMD:ESTOP");
+          }}
+          title="ARRESTO DI EMERGENZA IMMEDIATO (E-STOP)"
+        >
+          <AlertTriangle size={15} />
+          <span>E-STOP ARRESTO IMMEDIATO</span>
+        </button>
       </div>
     </div>
   );

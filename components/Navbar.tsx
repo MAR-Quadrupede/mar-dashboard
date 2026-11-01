@@ -1,8 +1,9 @@
 "use client";
 
+import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut, Radio, Lock, Unlock, Shield, Settings, SlidersHorizontal } from "lucide-react";
+import { Lock, Unlock, LogOut, Sliders, Shield, Terminal } from "lucide-react";
 
 type ControlLockInfo = {
   isHeld: boolean;
@@ -11,15 +12,25 @@ type ControlLockInfo = {
   expiresInSeconds: number;
 };
 
+type QuickTelemetry = {
+  batteryVoltage?: number;
+  batteryPercent?: number;
+  currentAmps?: number;
+  temperatureCelsius?: number;
+  pitchDegrees?: number;
+  rollDegrees?: number;
+};
+
 type Props = {
   username?: string;
   isAdmin?: boolean;
-  lock?: ControlLockInfo;
+  lock?: ControlLockInfo | null;
   onAcquireLock?: () => Promise<void>;
   onReleaseLock?: () => Promise<void>;
   onLogout: () => void;
   liveLinkLabel?: string;
   liveLinkOk?: boolean;
+  quickTelemetry?: QuickTelemetry;
 };
 
 export function Navbar({
@@ -30,159 +41,173 @@ export function Navbar({
   onReleaseLock,
   onLogout,
   liveLinkLabel,
-  liveLinkOk
+  liveLinkOk,
+  quickTelemetry
 }: Props) {
   const pathname = usePathname();
 
+  const isLockedByMe = Boolean(lock?.isHeldByCaller);
+  const isLockedByOther = Boolean(lock?.isHeld && !lock?.isHeldByCaller);
+
   return (
-    <header className="header-bar">
-      {/* Brand & System */}
-      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-        <div className="brand-title">
+    <header className="flight-header">
+      {/* Platform & Status */}
+      <div className="system-identity">
+        <div className="platform-badge">
           <div
-            style={{
-              width: 10,
-              height: 10,
-              borderRadius: "50%",
-              background: liveLinkOk === false ? "var(--color-warning)" : "var(--color-success)",
-              boxShadow: liveLinkOk ? "0 0 8px var(--color-success)" : undefined
-            }}
+            className={`status-dot ${
+              liveLinkOk ? "online" : liveLinkLabel?.includes("SYNC") ? "warning" : "offline"
+            }`}
           />
-          <span>M.A.R.</span>
-          <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}>
-            Console di Controllo
+          <span>M.A.R. MK-1</span>
+          <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>|</span>
+          <span style={{ fontSize: 11, color: "var(--text-secondary)", fontWeight: 500 }}>
+            TELEOP COCKPIT
           </span>
-          {liveLinkLabel && (
-            <span
-              className={`badge ${liveLinkOk ? "badge-success" : "badge-warning"}`}
-              style={{ fontSize: 10, marginLeft: 4 }}
-            >
-              {liveLinkLabel}
-            </span>
-          )}
         </div>
 
-        {/* Navigation Tabs */}
-        <nav className="nav-links">
+        {liveLinkLabel && (
+          <span className={`tag ${liveLinkOk ? "tag-success" : "tag-warning"} mono`}>
+            {liveLinkLabel}
+          </span>
+        )}
+
+        {/* Navigation Switch */}
+        <nav className="flight-nav">
           <Link
             href="/"
-            className={`nav-item ${pathname === "/" ? "active" : ""}`}
+            className={`flight-nav-item ${pathname === "/" ? "active" : ""}`}
           >
-            Dashboard
+            <Terminal size={12} />
+            <span>CONSOLE</span>
           </Link>
           <Link
             href="/settings"
-            className={`nav-item ${pathname === "/settings" ? "active" : ""}`}
-            style={{ display: "flex", alignItems: "center", gap: 5 }}
+            className={`flight-nav-item ${pathname === "/settings" ? "active" : ""}`}
           >
-            <Settings size={13} />
-            <span>Impostazioni</span>
+            <Sliders size={12} />
+            <span>IMPOSTAZIONI</span>
           </Link>
         </nav>
       </div>
 
-      {/* Control Lock Status & Operator Actions */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        {/* Single Operator Lock Pill */}
-        {lock && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "4px 10px",
-              background: "var(--bg-app)",
-              border: "1px solid var(--border-default)",
-              borderRadius: "var(--radius-sm)",
-              fontSize: 12
-            }}
-          >
-            {lock.isHeldByCaller ? (
-              <>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--color-success)" }} />
-                <span style={{ color: "var(--color-success)", fontWeight: 600 }}>
-                  Controllo Attivo: Tu
-                </span>
-                <span className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                  ({lock.expiresInSeconds}s)
-                </span>
-                {onReleaseLock && (
-                  <button
-                    className="btn btn-sm"
-                    onClick={onReleaseLock}
-                    style={{ padding: "2px 6px", fontSize: 11 }}
-                    title="Rilascia il controllo per consentire ad altri di manovrare"
-                  >
-                    Rilascia
-                  </button>
-                )}
-              </>
-            ) : lock.isHeld ? (
-              <>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--color-warning)" }} />
-                <span style={{ color: "var(--text-secondary)" }}>
-                  Sola Lettura (Pilota: <strong style={{ color: "var(--text-main)" }}>{lock.holderUsername}</strong>)
-                </span>
-                {onAcquireLock && (
-                  <button
-                    className="btn btn-sm"
-                    onClick={onAcquireLock}
-                    style={{ padding: "2px 6px", fontSize: 11 }}
-                    title="Richiedi o assumi il controllo del robot"
-                  >
-                    {isAdmin ? "Forza Controllo" : "Prendi Controllo"}
-                  </button>
-                )}
-              </>
-            ) : (
-              <>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--text-muted)" }} />
-                <span style={{ color: "var(--text-muted)" }}>Nessun pilota attivo</span>
-                {onAcquireLock && (
-                  <button
-                    className="btn btn-sm btn-primary"
-                    onClick={onAcquireLock}
-                    style={{ padding: "2px 8px", fontSize: 11 }}
-                  >
-                    Prendi Controllo
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-        )}
+      {/* Quick Telemetry Tape */}
+      {quickTelemetry && (
+        <div className="telemetry-ribbon mono" style={{ display: "flex" }}>
+          {quickTelemetry.batteryPercent !== undefined && quickTelemetry.batteryPercent > 0 && (
+            <div className="ribbon-item">
+              <span className="ribbon-label">BATT:</span>
+              <span
+                className="ribbon-val"
+                style={{
+                  color: quickTelemetry.batteryPercent < 25 ? "var(--color-danger)" : "var(--text-main)"
+                }}
+              >
+                {quickTelemetry.batteryVoltage?.toFixed(1)}V ({quickTelemetry.batteryPercent}%)
+              </span>
+            </div>
+          )}
 
-        {/* User badge */}
+          {quickTelemetry.currentAmps !== undefined && (
+            <div className="ribbon-item">
+              <span className="ribbon-label">CURR:</span>
+              <span className="ribbon-val">{quickTelemetry.currentAmps.toFixed(1)}A</span>
+            </div>
+          )}
+
+          {quickTelemetry.temperatureCelsius !== undefined && quickTelemetry.temperatureCelsius > 0 && (
+            <div className="ribbon-item">
+              <span className="ribbon-label">TEMP:</span>
+              <span className="ribbon-val">{quickTelemetry.temperatureCelsius.toFixed(0)}°C</span>
+            </div>
+          )}
+
+          {quickTelemetry.pitchDegrees !== undefined && (
+            <div className="ribbon-item">
+              <span className="ribbon-label">ATTITUDE:</span>
+              <span className="ribbon-val">
+                P:{quickTelemetry.pitchDegrees > 0 ? `+${quickTelemetry.pitchDegrees.toFixed(1)}` : quickTelemetry.pitchDegrees.toFixed(1)}°
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Operator Safety Interlock (Single Active Authority) */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            fontSize: 12,
-            padding: "4px 8px",
-            background: "var(--bg-app)",
-            border: "1px solid var(--border-subtle)",
-            borderRadius: "var(--radius-sm)"
-          }}
+          className={`authority-box mono ${
+            isLockedByMe ? "held-by-me" : isLockedByOther ? "held-by-other" : "vacant"
+          }`}
         >
-          <span style={{ fontWeight: 600 }}>{username || "Operatore"}</span>
-          {isAdmin && (
-            <span style={{ fontSize: 10, color: "var(--color-info)", fontWeight: 700 }}>
-              ADMIN
-            </span>
+          {isLockedByMe ? (
+            <>
+              <Lock size={12} />
+              <span>CONTROLLO ATTIVO: TU</span>
+              <span style={{ opacity: 0.75 }}>({lock?.expiresInSeconds}s)</span>
+              {onReleaseLock && (
+                <button
+                  className="btn btn-xs"
+                  onClick={onReleaseLock}
+                  style={{ marginLeft: 4 }}
+                  title="Rilascia il comando per altri operatori"
+                >
+                  Rilascia
+                </button>
+              )}
+            </>
+          ) : isLockedByOther ? (
+            <>
+              <Lock size={12} />
+              <span>SOLA LETTURA (PILOTA: @{lock?.holderUsername})</span>
+              {onAcquireLock && (
+                <button
+                  className="btn btn-xs btn-primary"
+                  onClick={onAcquireLock}
+                  style={{ marginLeft: 4 }}
+                  title="Richiedi o forza il controllo"
+                >
+                  {isAdmin ? "Forza Override" : "Richiedi"}
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <Unlock size={12} color="var(--text-muted)" />
+              <span style={{ color: "var(--text-muted)" }}>NESSUN PILOTA ATTIVO</span>
+              {onAcquireLock && (
+                <button
+                  className="btn btn-xs btn-primary"
+                  onClick={onAcquireLock}
+                  style={{ marginLeft: 4 }}
+                >
+                  Prendi Controllo
+                </button>
+              )}
+            </>
           )}
         </div>
 
-        {/* Logout */}
-        <button
-          className="btn btn-sm"
-          onClick={onLogout}
-          title="Disconnetti"
-          style={{ color: "var(--text-muted)" }}
-        >
-          <LogOut size={13} />
-          <span>Esci</span>
-        </button>
+        {/* User Info & Logout */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+          <span style={{ color: "var(--text-muted)" }}>OP:</span>
+          <span className="mono" style={{ fontWeight: 600, color: "var(--text-main)" }}>
+            {username}
+          </span>
+          {isAdmin && (
+            <span className="tag tag-info" style={{ fontSize: 9, padding: "1px 4px" }}>
+              ADM
+            </span>
+          )}
+          <button
+            className="btn btn-xs"
+            onClick={onLogout}
+            title="Disconnetti operatore"
+            style={{ marginLeft: 4 }}
+          >
+            <LogOut size={11} />
+          </button>
+        </div>
       </div>
     </header>
   );
