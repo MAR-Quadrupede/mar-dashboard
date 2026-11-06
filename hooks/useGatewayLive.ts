@@ -160,8 +160,10 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
         const cmd = String(payload?.active_command || "—");
         const state = String(payload?.state || "IDLE");
         const reason = String(payload?.reason || "");
-        const fusedCm = payload?.fusion?.fused_cm != null ? Number(payload.fusion.fused_cm) : null;
-        const front = fusedCm != null && fusedCm > 0 && fusedCm < 900 ? fusedCm / 100 : telemRef.current.frontDistanceMeters;
+        const lidarFrontM = payload?.lidar_front_m != null
+          ? Number(payload.lidar_front_m)
+          : (payload?.fusion?.inputs?.lidar != null ? Number(payload.fusion.inputs.lidar) / 100 : null);
+        const front = lidarFrontM != null && lidarFrontM > 0 ? lidarFrontM : telemRef.current.frontDistanceMeters;
 
         // Livello di rischio autorevole calcolato dal Decision Engine
         const riskFromFsm = String(payload?.risk_level || "").toUpperCase();
@@ -174,11 +176,23 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
             ? "MODERATE"
             : "LOW";
 
+        // Estrai valori sincronizzati passati assieme dal decision engine
+        const usVal = payload?.ultrasonic_cm != null
+          ? Number(payload.ultrasonic_cm)
+          : (payload?.fusion?.inputs?.ultrasonic != null ? Number(payload.fusion.inputs.ultrasonic) : null);
+        const ptsCount = payload?.point_count != null && Number(payload.point_count) > 0 ? Number(payload.point_count) : null;
+
+        if (payload?.slam_pose) {
+          setSlamPose(payload.slam_pose);
+        }
+
         setTelemetry((prev) => {
           const next = {
             ...prev,
             fsmState: state as RoverTelemetry["fsmState"],
             frontDistanceMeters: front > 0 ? front : prev.frontDistanceMeters,
+            ultrasonicMeters: usVal != null && usVal > 0 ? usVal / 100 : prev.ultrasonicMeters,
+            lidarPoints: ptsCount != null ? ptsCount : prev.lidarPoints,
             connectivity: "online" as const,
             updatedAt: nowIso
           };
@@ -275,22 +289,31 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
         }
         const objects = Array.isArray(payload?.objects) ? payload.objects : [];
         const top = objects[0];
-        const z =
-          Number(
-            payload?.target_dist_cm ??
-              payload?.z_basso_cm ??
-              (top?.estimated_distance_cm ?? 0)
-          ) / (payload?.target_dist_cm || payload?.z_basso_cm ? 100 : 1);
-        const label = top?.class || top?.label || (objects.length ? `${objects.length} oggetti` : "Nessun target");
-        const conf = Number(top?.confidence ?? (objects.length ? 0.5 : 0));
+        const hasTop = Boolean(top);
+        const hasObs = Boolean(payload?.obstacle_found && payload?.obstacle_dist_cm > 0 && payload?.obstacle_dist_cm < 900);
+        const targetLabel = hasTop
+          ? String(top.class || top.label || "Oggetto")
+          : hasObs
+          ? "Ostacolo Stereocamera"
+          : "Nessun target";
+        const targetConf = hasTop
+          ? Number(top?.confidence ?? 0.8)
+          : hasObs
+          ? 0.9
+          : 0;
+        const targetDistMeters = hasTop
+          ? (top.estimated_distance_cm ? Number(top.estimated_distance_cm) / 100 : (payload?.target_dist_cm ? Number(payload.target_dist_cm) / 100 : 0))
+          : hasObs
+          ? Number(payload.obstacle_dist_cm) / 100
+          : 0;
 
         setThought((prev) => ({
           ...prev,
-          currentStage: objects.length ? "YOLO_CLASSIFICATION" : prev.currentStage,
+          currentStage: hasTop ? "YOLO_CLASSIFICATION" : hasObs ? "DEPTH_EVALUATION" : prev.currentStage,
           activeTarget: {
-            label: String(label),
-            confidence: conf,
-            distanceMeters: z > 0 && z < 50 ? z : prev.activeTarget.distanceMeters,
+            label: targetLabel,
+            confidence: targetConf,
+            distanceMeters: targetDistMeters,
             azimuthDeg: prev.activeTarget.azimuthDeg,
             bbox: top?.bbox
           }
@@ -301,11 +324,11 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
             id: `yolo-${payload?.timestamp || Date.now()}`,
             timestamp: formatTime(payload?.timestamp),
             stage: "YOLO_CLASSIFICATION",
-            targetObject: String(label),
-            confidence: conf,
-            distanceMeters: z > 0 && z < 50 ? z : 0,
+            targetObject: targetLabel,
+            confidence: targetConf,
+            distanceMeters: targetDistMeters,
             azimuthDeg: 0,
-            reasoning: `YOLO on-edge: ${label} (${Math.round(conf * 100)}%)${
+            reasoning: `YOLO on-edge: ${targetLabel} (${Math.round(targetConf * 100)}%)${
               payload?.ground_hazard ? " · hazard terreno" : ""
             }`,
             chosenAction: payload?.ground_hazard ? "GROUND_HAZARD" : "DETECT"
@@ -315,20 +338,7 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
       }
 
       if (topic === "mar/vision/command") {
-        const distCm = Number(payload?.obstacle_near_cm ?? payload?.target_dist_cm ?? 0);
-        // Non sovrascrivere currentDecision o riskLevel: appartiene esclusivamente al Decision Engine FSM.
-        if (distCm > 0 && distCm < 900) {
-          setTelemetry((prev) => {
-            const next = {
-              ...prev,
-              frontDistanceMeters: prev.frontDistanceMeters > 0 ? prev.frontDistanceMeters : distCm / 100,
-              connectivity: "online" as const,
-              updatedAt: nowIso
-            };
-            telemRef.current = next;
-            return next;
-          });
-        }
+        // Topic informativo stereocamera; non sovrascrivere frontDistanceMeters (che appartiene al LiDAR).
         return;
       }
 

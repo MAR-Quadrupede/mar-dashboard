@@ -153,7 +153,9 @@ export function LineOfThoughtPanel({ data }: Props) {
               <div className="field-cell" style={{ padding: "4px 6px" }}>
                 <span className="field-label">DISTANZA Z</span>
                 <span className="field-value" style={{ fontSize: 11 }}>
-                  {activeTarget.distanceMeters.toFixed(2)} <span className="field-unit">m</span>
+                  {activeTarget.distanceMeters > 0 && activeTarget.confidence > 0
+                    ? `${activeTarget.distanceMeters.toFixed(2)} m`
+                    : "—"}
                 </span>
               </div>
               <div className="field-cell" style={{ padding: "4px 6px" }}>

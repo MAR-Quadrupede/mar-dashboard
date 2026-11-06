@@ -155,7 +155,7 @@ export function LidarRadar({ points = [], frontDistanceM, maxRangeM = 4, slamPos
       ctx.lineTo(css - 10, cy);
       ctx.stroke();
 
-      // Punti Mappa Stanza (ostacoli e muri rilevati)
+      // Punti Mappa Stanza (ostacoli e muri rilevati dalla mappa globale SLAM)
       const cloud = slamMap?.cloud || [];
       ctx.fillStyle = "#06b6d4";
       for (const pt of cloud) {
@@ -163,6 +163,23 @@ export function LidarRadar({ points = [], frontDistanceM, maxRangeM = 4, slamPos
         const my = cy - pt[1] * pxPerM;
         if (mx >= 5 && mx <= css - 5 && my >= 5 && my <= css - 5) {
           ctx.fillRect(mx - 1, my - 1, 2, 2);
+        }
+      }
+
+      // Se la mappa globale è ancora in caricamento, visualizza i punti live della scansione locale
+      if (cloud.length === 0 && points.length > 0) {
+        ctx.fillStyle = "rgba(56, 189, 248, 0.75)";
+        for (const pt of points) {
+          if (!pt || pt.length < 2) continue;
+          const ang = Number(pt[0]);
+          const dist = Number(pt[1]);
+          if (!Number.isFinite(ang) || !Number.isFinite(dist) || dist <= 0.2) continue;
+          const rad = ((ang - 90) * Math.PI) / 180;
+          const mx = cx + (dist * Math.cos(rad)) * pxPerM;
+          const my = cy + (dist * Math.sin(rad)) * pxPerM;
+          if (mx >= 5 && mx <= css - 5 && my >= 5 && my <= css - 5) {
+            ctx.fillRect(mx - 1, my - 1, 2, 2);
+          }
         }
       }
 
@@ -217,7 +234,12 @@ export function LidarRadar({ points = [], frontDistanceM, maxRangeM = 4, slamPos
     }
   }, [points, frontDistanceM, maxRangeM, viewMode, slamPose, slamMap]);
 
-  const mapCount = slamPose?.map_points_count ?? slamMap?.point_count ?? points.length;
+  const mapCount =
+    (slamMap?.point_count != null && slamMap.point_count > 0)
+      ? slamMap.point_count
+      : (slamPose?.map_points_count != null && slamPose.map_points_count > 0)
+      ? slamPose.map_points_count
+      : points.length;
 
   return (
     <div className="panel">
