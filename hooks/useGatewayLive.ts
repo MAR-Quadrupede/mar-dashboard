@@ -168,6 +168,7 @@ function parseFusion(payload: any): FusionState | null {
     },
     inputs: {
       ultrasonic_cm: toNum(f.inputs?.ultrasonic_cm),
+      ultrasonic_echo: f.inputs?.ultrasonic_echo !== false,
       lidar_front_cm: toNum(f.inputs?.lidar_front_cm),
       stereo_front_cm: toNum(f.inputs?.stereo_front_cm)
     },
@@ -541,7 +542,11 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
             batteryPercent,
             batteryVoltage: batteryVoltage || prev.batteryVoltage,
             ultrasonicMeters:
-              !Number.isNaN(ultrasonic) && ultrasonic > 0 ? ultrasonic / 100 : prev.ultrasonicMeters,
+              !Number.isNaN(ultrasonic) && ultrasonic >= 390
+                ? 0
+                : !Number.isNaN(ultrasonic) && ultrasonic > 0
+                  ? ultrasonic / 100
+                  : prev.ultrasonicMeters,
             connectivity: "online" as const,
             updatedAt: nowIso
           };

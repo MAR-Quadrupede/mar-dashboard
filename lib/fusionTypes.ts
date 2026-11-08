@@ -63,7 +63,12 @@ export type FusionState = {
   degraded: boolean;
   sectors: Partial<Record<SectorName, SectorFusion>>;
   sensors: { lidar: boolean; ultrasonic: boolean; stereo: boolean; imu: boolean; slam: boolean };
-  inputs: { ultrasonic_cm: number | null; lidar_front_cm: number | null; stereo_front_cm: number | null };
+  inputs: {
+    ultrasonic_cm: number | null;
+    ultrasonic_echo?: boolean;
+    lidar_front_cm: number | null;
+    stereo_front_cm: number | null;
+  };
   weights: { ultrasonic: number; lidar: number; stereo: number };
   objects: Array<{
     class: string;
