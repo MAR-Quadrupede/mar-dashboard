@@ -1,10 +1,25 @@
-node_modules
-.next
-.DS_Store
-*.swp
-
-# Environment variables
+# Environment & Secrets (NEVER commit to GitHub)
 .env
 .env*.local
 .env.*
 !.env.example
+secrets*.yaml
+*secret*.yaml
+*secret*.yml
+*secret*.json
+users_database.yml
+*.pem
+*.key
+*.crt
+*.pfx
+*.p12
+
+# Next.js / Node
+node_modules
+.next
+
+# OS / IDE
+.DS_Store
+*.swp
+.vscode/
+.idea/
