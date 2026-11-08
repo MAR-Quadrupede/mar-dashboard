@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { RoverLineOfThought, RoverTelemetry, ThoughtEvent } from "@/lib/roverData";
 import { useLoraSerial } from "@/hooks/useLoraSerial";
 import type { ParsedLoraTelemetry } from "@/lib/loraParser";
+import type { FusionState, HardwareHealth, RiskLevel, SectorFusion, SectorName } from "@/lib/fusionTypes";
+import { SECTOR_ORDER, riskLevelFromValue } from "@/lib/fusionTypes";
 
 export type LiveLinkState = "connecting" | "live" | "reconnecting" | "offline" | "lora";
 
@@ -107,7 +109,99 @@ const emptyTelemetry = (): RoverTelemetry => ({
   updatedAt: new Date().toISOString()
 });
 
-export type VisionFps = { camera?: number; depth?: number; stream?: number };
+export type VisionFps = { camera?: number; depth?: number; stream?: number; yolo?: number };
+
+function toNum(v: unknown): number | null {
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeRisk(raw: unknown, fallback: RiskLevel = "LOW"): RiskLevel {
+  const s = String(raw || "").toUpperCase();
+  return s === "CRITICAL" || s === "HIGH" || s === "MODERATE" || s === "LOW" ? (s as RiskLevel) : fallback;
+}
+
+/** Converte il campo `fusion` + metadati di `mar/fsm/state` nello stato tipizzato della dashboard. */
+function parseFusion(payload: any): FusionState | null {
+  const f = payload?.fusion;
+  if (!f || typeof f !== "object") return null;
+  const sectors: Partial<Record<SectorName, SectorFusion>> = {};
+  const rawSectors = f.sectors || {};
+  for (const name of SECTOR_ORDER) {
+    const s = rawSectors[name];
+    if (!s) continue;
+    const risk = toNum(s.risk) ?? 0;
+    sectors[name] = {
+      risk,
+      level: normalizeRisk(s.level, riskLevelFromValue(risk)),
+      proximity_risk: toNum(s.proximity_risk) ?? undefined,
+      object_risk: toNum(s.object_risk) ?? undefined,
+      fused_dist_cm: toNum(s.fused_dist_cm),
+      min_reliable_cm: toNum(s.min_reliable_cm),
+      inputs: {
+        lidar: toNum(s.inputs?.lidar) ?? undefined,
+        ultrasonic: toNum(s.inputs?.ultrasonic) ?? undefined,
+        stereo: toNum(s.inputs?.stereo) ?? undefined
+      },
+      objects: Array.isArray(s.objects) ? s.objects : [],
+      stereo_only_near: Boolean(s.stereo_only_near),
+      note: s.note ? String(s.note) : undefined
+    };
+  }
+  const nav = payload?.navigation || {};
+  const riskValue = toNum(payload?.risk_value) ?? toNum(f.front_risk) ?? 0;
+  return {
+    updatedAt: Date.now(),
+    frontRisk: toNum(f.front_risk) ?? 0,
+    frontLevel: normalizeRisk(f.front_level, riskLevelFromValue(toNum(f.front_risk) ?? 0)),
+    frontDistCm: toNum(f.front_dist_cm),
+    gateDistCm: toNum(f.gate_distance_cm),
+    degraded: Boolean(f.degraded),
+    sectors,
+    sensors: {
+      lidar: Boolean(f.sensors?.lidar),
+      ultrasonic: Boolean(f.sensors?.ultrasonic),
+      stereo: Boolean(f.sensors?.stereo),
+      imu: Boolean(f.sensors?.imu),
+      slam: Boolean(f.sensors?.slam)
+    },
+    inputs: {
+      ultrasonic_cm: toNum(f.inputs?.ultrasonic_cm),
+      lidar_front_cm: toNum(f.inputs?.lidar_front_cm),
+      stereo_front_cm: toNum(f.inputs?.stereo_front_cm)
+    },
+    weights: {
+      ultrasonic: toNum(f.weights?.ultrasonic) ?? 1,
+      lidar: toNum(f.weights?.lidar) ?? 1,
+      stereo: toNum(f.weights?.stereo) ?? 0.6
+    },
+    objects: Array.isArray(f.objects)
+      ? f.objects.map((o: any) => ({
+          class: String(o.class || o.label || "object"),
+          confidence: toNum(o.confidence) ?? 0,
+          dist_cm: toNum(o.dist_cm ?? o.estimated_distance_cm),
+          bearing_deg: toNum(o.bearing_deg) ?? 0,
+          sector: String(o.sector || ""),
+          depth_quality: toNum(o.depth_quality) ?? undefined
+        }))
+      : [],
+    groundHazard: Boolean(f.ground_hazard),
+    fovBlocked: Boolean(f.fov_blocked),
+    visionRisk: String(f.vision_risk || ""),
+    autonomous: payload?.autonomous !== false,
+    manualOverride: Boolean(payload?.manual_override),
+    riskValue,
+    riskLevel: normalizeRisk(payload?.risk_level, riskLevelFromValue(riskValue)),
+    state: String(payload?.state || "IDLE"),
+    navigation: {
+      choice: nav.choice != null ? String(nav.choice) : null,
+      scores: nav.scores && typeof nav.scores === "object" ? nav.scores : {},
+      front_cm: toNum(nav.front_cm) ?? undefined,
+      front_risk: toNum(nav.front_risk) ?? undefined
+    }
+  };
+}
 
 function normalizeFsmState(raw?: string): RoverTelemetry["fsmState"] {
   const s = (raw || "").toUpperCase();
@@ -128,6 +222,8 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
   const [lidarPointsCloud, setLidarPointsCloud] = useState<[number, number][]>([]);
   const [slamPose, setSlamPose] = useState<any>(null);
   const [slamMap, setSlamMap] = useState<any>(null);
+  const [fusion, setFusion] = useState<FusionState | null>(null);
+  const [hardware, setHardware] = useState<HardwareHealth>({});
 
   const wsRef = useRef<WebSocket | null>(null);
   const thoughtsRef = useRef<ThoughtEvent[]>([]);
@@ -185,6 +281,9 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
         if (payload?.slam_pose) {
           setSlamPose(payload.slam_pose);
         }
+
+        const parsedFusion = parseFusion(payload);
+        if (parsedFusion) setFusion(parsedFusion);
 
         setTelemetry((prev) => {
           const next = {
@@ -284,8 +383,19 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
           setVisionFps({
             camera: Number(payload?.fps_camera) || undefined,
             depth: Number(payload?.fps_depth) || undefined,
-            stream: Number(payload?.fps_stream) || undefined
+            stream: Number(payload?.fps_stream) || undefined,
+            yolo: Number(payload?.fps_yolo) || undefined
           });
+          setHardware((prev) => ({
+            ...prev,
+            vision: {
+              fps_camera: Number(payload?.fps_camera) || undefined,
+              fps_depth: Number(payload?.fps_depth) || undefined,
+              fps_yolo: Number(payload?.fps_yolo) || undefined,
+              objects_count: Number(payload?.objects_count) || 0,
+              at: Date.now()
+            }
+          }));
         }
         const objects = Array.isArray(payload?.objects) ? payload.objects : [];
         const top = objects[0];
@@ -314,12 +424,15 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
             label: targetLabel,
             confidence: targetConf,
             distanceMeters: targetDistMeters,
-            azimuthDeg: prev.activeTarget.azimuthDeg,
+            azimuthDeg: top?.bearing_deg != null ? Number(top.bearing_deg) || 0 : prev.activeTarget.azimuthDeg,
             bbox: top?.bbox
           }
         }));
 
         if (top) {
+          const bearing = Number(top?.bearing_deg ?? 0) || 0;
+          const sector = top?.sector ? String(top.sector) : "";
+          const distTxt = targetDistMeters > 0 ? `${(targetDistMeters * 100).toFixed(0)} cm` : "dist. n/d";
           pushThought({
             id: `yolo-${payload?.timestamp || Date.now()}`,
             timestamp: formatTime(payload?.timestamp),
@@ -327,13 +440,59 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
             targetObject: targetLabel,
             confidence: targetConf,
             distanceMeters: targetDistMeters,
-            azimuthDeg: 0,
-            reasoning: `YOLO on-edge: ${targetLabel} (${Math.round(targetConf * 100)}%)${
-              payload?.ground_hazard ? " · hazard terreno" : ""
-            }`,
+            azimuthDeg: bearing,
+            reasoning: `YOLO on-edge: ${targetLabel} (${Math.round(targetConf * 100)}%) · ${distTxt} · ${bearing >= 0 ? "+" : ""}${bearing.toFixed(0)}°${
+              sector ? ` · ${sector}` : ""
+            }${payload?.ground_hazard ? " · hazard terreno" : ""}`,
             chosenAction: payload?.ground_hazard ? "GROUND_HAZARD" : "DETECT"
           });
         }
+        return;
+      }
+
+      if (topic === "mar/lidar/status") {
+        setHardware((prev) => ({
+          ...prev,
+          lidar: {
+            connected: Boolean(payload?.connected),
+            driver: payload?.driver ? String(payload.driver) : undefined,
+            port: payload?.port ? String(payload.port) : undefined,
+            scan_hz: toNum(payload?.scan_hz) ?? undefined,
+            slam_points: toNum(payload?.slam_points) ?? undefined,
+            imu_prior: Boolean(payload?.imu_prior),
+            at: Date.now()
+          }
+        }));
+        return;
+      }
+
+      if (topic === "mar/hardware/status") {
+        setHardware((prev) => ({
+          ...prev,
+          serial: {
+            motion_connected: Boolean(payload?.motion_connected),
+            motion_port: payload?.motion_port ?? null,
+            ultrasonic_connected: Boolean(payload?.ultrasonic_connected),
+            ultrasonic_simulated: Boolean(payload?.ultrasonic_simulated),
+            ultrasonic_port: payload?.ultrasonic_port ?? null,
+            port_roles: payload?.port_roles && typeof payload.port_roles === "object" ? payload.port_roles : {},
+            unknown_ports: Array.isArray(payload?.unknown_ports) ? payload.unknown_ports : [],
+            at: Date.now()
+          }
+        }));
+        return;
+      }
+
+      if (topic === "mar/imu/status") {
+        setHardware((prev) => ({
+          ...prev,
+          imu: { available: Boolean(payload?.available), reason: payload?.reason ? String(payload.reason) : undefined, at: Date.now() }
+        }));
+        return;
+      }
+
+      if (topic === "mar/decision/health") {
+        setHardware((prev) => ({ ...prev, decision: { ...(payload || {}), at: Date.now() } }));
         return;
       }
 
@@ -359,9 +518,11 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
 
       if (topic === "mar/ultrasonic/range" || topic === "mar/hardware/telemetry") {
         const battV = Number(payload?.batt ?? payload?.battery_v ?? payload?.voltage ?? NaN);
-        const ultrasonic = Number(
-          payload?.us_cm ?? payload?.ultrasonic_cm ?? payload?.ultrasonic ?? payload?.us ?? NaN
-        );
+        // le letture simulate (bridge senza Arduino ultrasuoni) non sono dati reali
+        const simulated = Boolean(payload?.simulated) || String(payload?.source || "").toUpperCase().startsWith("SIM");
+        const ultrasonic = simulated
+          ? NaN
+          : Number(payload?.us_cm ?? payload?.ultrasonic_cm ?? payload?.ultrasonic ?? payload?.us ?? NaN);
         setTelemetry((prev) => {
           let batteryPercent = prev.batteryPercent;
           let batteryVoltage = prev.batteryVoltage;
@@ -600,6 +761,8 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
     lidarPointsCloud,
     slamPose,
     slamMap,
+    fusion,
+    hardware,
     lastTopicAt,
     sendMotion,
     sendEstop,

@@ -22,9 +22,10 @@ type TelemetryData = {
 
 type Props = {
   telemetry?: TelemetryData | null;
+  stereoFrontCm?: number | null;
 };
 
-export function SensorsTelemetryPanel({ telemetry }: Props) {
+export function SensorsTelemetryPanel({ telemetry, stereoFrontCm = null }: Props) {
   if (!telemetry) {
     return (
       <div className="panel">
@@ -186,6 +187,19 @@ export function SensorsTelemetryPanel({ telemetry }: Props) {
                 }}
               >
                 {ultrasonicMeters > 0 ? ultrasonicMeters.toFixed(2) : "—"}{" "}
+                <span className="field-unit">m</span>
+              </span>
+            </div>
+
+            <div className="field-cell">
+              <span className="field-label">STEREO FRONTE</span>
+              <span
+                className="field-value"
+                style={{
+                  color: stereoFrontCm != null && stereoFrontCm > 0 && stereoFrontCm < 80 ? "var(--color-warning)" : undefined
+                }}
+              >
+                {stereoFrontCm != null && stereoFrontCm > 0 && stereoFrontCm < 900 ? (stereoFrontCm / 100).toFixed(2) : "—"}{" "}
                 <span className="field-unit">m</span>
               </span>
             </div>

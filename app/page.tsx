@@ -10,6 +10,7 @@ import { LineOfThoughtPanel } from "@/components/LineOfThoughtPanel";
 import { MovementPanel } from "@/components/MovementPanel";
 import { SensorsTelemetryPanel } from "@/components/SensorsTelemetryPanel";
 import { LidarRadar } from "@/components/LidarRadar";
+import { FusionPanel } from "@/components/FusionPanel";
 import { AuthScreen } from "@/components/AuthScreen";
 
 export default function DashboardPage() {
@@ -181,13 +182,15 @@ export default function DashboardPage() {
               onEstop={() => live.sendEstop()}
               transportMode={live.transportMode}
             />
-            <SensorsTelemetryPanel telemetry={live.telemetry} />
+            <FusionPanel fusion={live.fusion} hardware={live.hardware} />
             <LidarRadar
               points={live.lidarPointsCloud}
               frontDistanceM={live.telemetry.frontDistanceMeters}
               slamPose={live.slamPose}
               slamMap={live.slamMap}
+              fusion={live.fusion}
             />
+            <SensorsTelemetryPanel telemetry={live.telemetry} stereoFrontCm={live.fusion?.inputs.stereo_front_cm ?? null} />
           </div>
         </div>
       </main>

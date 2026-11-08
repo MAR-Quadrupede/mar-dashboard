@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { Radar, Compass, MapPin } from "lucide-react";
+import { Radar, MapPin } from "lucide-react";
+import type { FusionState } from "@/lib/fusionTypes";
+import { SECTOR_ANGLE_DEG, SECTOR_ORDER, riskColor } from "@/lib/fusionTypes";
 
 export type LidarPoint = [number, number]; // [angle_deg, dist_m]
 
@@ -34,9 +36,10 @@ type Props = {
     room?: { width_m: number; length_m: number; area_m2: number };
     point_count?: number;
   } | null;
+  fusion?: FusionState | null;
 };
 
-export function LidarRadar({ points = [], frontDistanceM, maxRangeM = 4, slamPose, slamMap }: Props) {
+export function LidarRadar({ points = [], frontDistanceM, maxRangeM = 4, slamPose, slamMap, fusion }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [viewMode, setViewMode] = useState<"radar" | "slam">("slam");
 
@@ -84,13 +87,45 @@ export function LidarRadar({ points = [], frontDistanceM, maxRangeM = 4, slamPos
       ctx.lineTo(cx + R, cy);
       ctx.stroke();
 
-      // Forward safety cone (45°)
-      ctx.fillStyle = "rgba(56, 189, 248, 0.05)";
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.arc(cx, cy, R, (-22.5 * Math.PI) / 180 - Math.PI / 2, (22.5 * Math.PI) / 180 - Math.PI / 2);
-      ctx.closePath();
-      ctx.fill();
+      // Spicchi di rischio per settore (equazione di fusione del Decision Engine)
+      if (fusion?.sectors) {
+        for (const name of SECTOR_ORDER) {
+          const sec = fusion.sectors[name];
+          if (!sec) continue;
+          const center = SECTOR_ANGLE_DEG[name];
+          const a0 = ((center - 22.5 - 90) * Math.PI) / 180;
+          const a1 = ((center + 22.5 - 90) * Math.PI) / 180;
+          const alpha = 0.06 + 0.5 * Math.max(0, Math.min(1, sec.risk));
+          const col = riskColor(sec.level);
+          ctx.fillStyle = col
+            .replace("#", "")
+            .match(/.{2}/g)!
+            .map((h) => parseInt(h, 16))
+            .reduce((acc, v, i) => (i === 0 ? `rgba(${v}` : `${acc}, ${v}`), "") + `, ${alpha.toFixed(2)})`;
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.arc(cx, cy, R, a0, a1);
+          ctx.closePath();
+          ctx.fill();
+          // distanza fusa del settore come arco
+          if (sec.fused_dist_cm != null && sec.fused_dist_cm < 900) {
+            const rr = (Math.min(sec.fused_dist_cm / 100, maxRangeM) / maxRangeM) * R;
+            ctx.strokeStyle = col;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(cx, cy, rr, a0 + 0.04, a1 - 0.04);
+            ctx.stroke();
+          }
+        }
+      } else {
+        // Forward safety cone (45°)
+        ctx.fillStyle = "rgba(56, 189, 248, 0.05)";
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, R, (-22.5 * Math.PI) / 180 - Math.PI / 2, (22.5 * Math.PI) / 180 - Math.PI / 2);
+        ctx.closePath();
+        ctx.fill();
+      }
 
       // Points
       for (const pt of points) {
@@ -109,6 +144,40 @@ export function LidarRadar({ points = [], frontDistanceM, maxRangeM = 4, slamPos
         ctx.fill();
       }
 
+      // Oggetti YOLO localizzati (bearing + distanza stereo/LiDAR)
+      if (fusion?.objects?.length) {
+        for (const o of fusion.objects) {
+          const dM = o.dist_cm != null ? o.dist_cm / 100 : maxRangeM * 0.9;
+          const r = (Math.min(dM, maxRangeM) / maxRangeM) * R;
+          const rad = ((o.bearing_deg - 90) * Math.PI) / 180;
+          const x = cx + r * Math.cos(rad);
+          const y = cy + r * Math.sin(rad);
+          ctx.strokeStyle = "#a78bfa";
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(x - 5, y - 5, 10, 10);
+          ctx.fillStyle = "#c4b5fd";
+          ctx.font = "9px ui-monospace, monospace";
+          ctx.fillText(`${o.class}${o.dist_cm != null ? ` ${o.dist_cm.toFixed(0)}cm` : ""}`, x + 7, y + 3);
+        }
+      }
+
+      // Direzione scelta dal navigatore
+      if (fusion?.navigation?.choice && SECTOR_ANGLE_DEG[fusion.navigation.choice as keyof typeof SECTOR_ANGLE_DEG] != null) {
+        const ang = SECTOR_ANGLE_DEG[fusion.navigation.choice as keyof typeof SECTOR_ANGLE_DEG];
+        const rad = ((ang - 90) * Math.PI) / 180;
+        const len = R * 0.45;
+        ctx.strokeStyle = "#38bdf8";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + len * Math.cos(rad), cy + len * Math.sin(rad));
+        ctx.stroke();
+        ctx.fillStyle = "#38bdf8";
+        ctx.beginPath();
+        ctx.arc(cx + len * Math.cos(rad), cy + len * Math.sin(rad), 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
       // Robot glyph
       ctx.fillStyle = "#22c55e";
       ctx.beginPath();
@@ -117,6 +186,12 @@ export function LidarRadar({ points = [], frontDistanceM, maxRangeM = 4, slamPos
       ctx.lineTo(cx + 5, cy + 5);
       ctx.closePath();
       ctx.fill();
+
+      if (fusion) {
+        ctx.fillStyle = riskColor(fusion.riskLevel);
+        ctx.font = "bold 10px ui-monospace, monospace";
+        ctx.fillText(`R=${fusion.riskValue.toFixed(2)} ${fusion.riskLevel}`, 8, 14);
+      }
 
       if (frontDistanceM != null && frontDistanceM > 0 && frontDistanceM < 90) {
         ctx.fillStyle = frontDistanceM < 0.35 ? "#ef4444" : "#f1f5f9";
@@ -174,9 +249,10 @@ export function LidarRadar({ points = [], frontDistanceM, maxRangeM = 4, slamPos
           const ang = Number(pt[0]);
           const dist = Number(pt[1]);
           if (!Number.isFinite(ang) || !Number.isFinite(dist) || dist <= 0.2) continue;
-          const rad = ((ang - 90) * Math.PI) / 180;
+          // frame robot = frame mondo alla posa iniziale: X avanti (→ destra schermo), Y sinistra (→ alto schermo)
+          const rad = (ang * Math.PI) / 180;
           const mx = cx + (dist * Math.cos(rad)) * pxPerM;
-          const my = cy + (dist * Math.sin(rad)) * pxPerM;
+          const my = cy + (dist * Math.sin(rad)) * pxPerM; // y_robot = -d·sin(a) → schermo: cy - y = cy + d·sin(a)
           if (mx >= 5 && mx <= css - 5 && my >= 5 && my <= css - 5) {
             ctx.fillRect(mx - 1, my - 1, 2, 2);
           }
@@ -209,7 +285,7 @@ export function LidarRadar({ points = [], frontDistanceM, maxRangeM = 4, slamPos
       // Robot cono visivo e corpo orientato
       ctx.save();
       ctx.translate(robX, robY);
-      ctx.rotate(-th + Math.PI / 2); // 0° = +X (destra) o up a seconda della convenzione
+      ctx.rotate(-th + Math.PI / 2); // θ=0 → +X mondo (destra schermo); θ>0 antiorario (sinistra robot)
 
       // Triangolo corpo robot
       ctx.fillStyle = "#22c55e";
@@ -232,7 +308,7 @@ export function LidarRadar({ points = [], frontDistanceM, maxRangeM = 4, slamPos
       const yStr = (slamPose?.y_m ?? 0) >= 0 ? `+${(slamPose?.y_m ?? 0).toFixed(2)}` : (slamPose?.y_m ?? 0).toFixed(2);
       ctx.fillText(`POSA: X:${xStr}m Y:${yStr}m θ:${(slamPose?.theta_deg ?? 0).toFixed(0)}°`, 10, css - 10);
     }
-  }, [points, frontDistanceM, maxRangeM, viewMode, slamPose, slamMap]);
+  }, [points, frontDistanceM, maxRangeM, viewMode, slamPose, slamMap, fusion]);
 
   const mapCount =
     (slamMap?.point_count != null && slamMap.point_count > 0)
