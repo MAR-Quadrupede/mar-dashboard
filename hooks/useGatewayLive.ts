@@ -478,6 +478,11 @@ export function useGatewayLive(enabled: boolean, configuredWsUrl?: string | null
             port_roles: payload?.port_roles && typeof payload.port_roles === "object" ? payload.port_roles : {},
             unknown_ports: Array.isArray(payload?.unknown_ports) ? payload.unknown_ports : [],
             at: Date.now()
+          },
+          imu: {
+            available: Boolean(payload?.imu_connected),
+            reason: payload?.imu_status ? String(payload.imu_status) : prev.imu?.reason,
+            at: Date.now()
           }
         }));
         return;

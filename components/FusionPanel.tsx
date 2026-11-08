@@ -160,7 +160,7 @@ export function FusionPanel({ fusion, hardware }: Props) {
                 <Chip ok={usOnline} warn={usSim} label="US" icon={<Waves size={11} />} detail={usSim ? "simulato" : undefined} />
                 <Chip ok={stereoOnline} label="Stereo" icon={<Eye size={11} />} detail={hardware?.vision?.fps_depth ? `${hardware.vision.fps_depth.toFixed(0)} fps` : undefined} />
                 <Chip ok={Boolean(hardware?.vision?.fps_yolo)} label="YOLO" icon={<Crosshair size={11} />} detail={hardware?.vision?.fps_yolo ? `${hardware.vision.fps_yolo.toFixed(1)} Hz` : "off"} />
-                <Chip ok={imuOnline} label="IMU" icon={<Compass size={11} />} detail={hardware?.imu && !hardware.imu.available ? "assente" : undefined} />
+                <Chip ok={imuOnline} label="IMU" icon={<Compass size={11} />} detail={hardware?.imu && !hardware.imu.available ? "in attesa" : undefined} />
                 <Chip ok={slamOnline} label="SLAM" icon={<Cpu size={11} />} detail={lidarHw?.slam_points ? `${lidarHw.slam_points} celle` : undefined} />
                 <Chip ok={motionOnline} label="Motion" icon={<Bot size={11} />} detail={serialHw ? (serialHw.motion_connected ? serialHw.motion_port || "" : "Arduino assente") : undefined} />
               </div>
